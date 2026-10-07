@@ -1,0 +1,11 @@
+[
+  {
+    "memory_id": "mem-02df7c53",
+    "cwe_id": "CWE-89",
+    "vulnerability_title": "Critical SQL Injection via f-string interpolation",
+    "vulnerable_pattern": "cursor.execute(f\"SELECT * FROM users WHERE id = {user_id}\")",
+    "patched_diff": "--- original.py\n+++ patched.py\n@@ -1,2 +1,2 @@\n user_id = input()\n-cursor.execute(f\"SELECT * FROM users WHERE id = {user_id}\")\n+cursor.execute(\"SELECT * FROM users WHERE id = %s\", (user_id,))\n",
+    "explanation": "Parametrized SQL query for CWE-89",
+    "timestamp": "2026-10-07T07:32:41.593003"
+  }
+]
