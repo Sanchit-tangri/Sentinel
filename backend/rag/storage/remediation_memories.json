@@ -97,5 +97,23 @@
     "patched_diff": "--- original.py\n+++ patched.py\n@@ -1,5 +1,8 @@\n def get_user_profile(user_id: int, db_connection):\n+    \"\"\"Securely fetches user profile with parameterized SQL query.\"\"\"\n+    if not isinstance(user_id, int):\n+        raise ValueError(\"Invalid user_id type\")\n     cursor = db_connection.cursor()\n-    query = f\"SELECT * FROM users WHERE id = {user_id}\"\n-    cursor.execute(query)\n-    return cursor.fetchone()\n+    query = \"SELECT id, username, email FROM users WHERE id = %s\"\n+    cursor.execute(query, (user_id,))\n+    return cursor.fetchone()",
     "explanation": "[mistralai/codestral-2501] Synthesized clean defensive code satisfying Architect security boundaries.",
     "timestamp": "2026-11-16T14:20:01.509734"
+  },
+  {
+    "memory_id": "mem-73736528",
+    "cwe_id": "CWE-89",
+    "vulnerability_title": "Critical SQL Injection via f-string interpolation",
+    "vulnerable_pattern": "query = f\"SELECT * FROM users WHERE id = {user_id}\"",
+    "patched_diff": "--- original.py\n+++ patched.py\n@@ -1,5 +1,8 @@\n def get_user_profile(user_id: int, db_connection):\n+    \"\"\"Securely fetches user profile with parameterized SQL query.\"\"\"\n+    if not isinstance(user_id, int):\n+        raise ValueError(\"Invalid user_id type\")\n     cursor = db_connection.cursor()\n-    query = f\"SELECT * FROM users WHERE id = {user_id}\"\n-    cursor.execute(query)\n-    return cursor.fetchone()\n+    query = \"SELECT id, username, email FROM users WHERE id = %s\"\n+    cursor.execute(query, (user_id,))\n+    return cursor.fetchone()",
+    "explanation": "[mistralai/codestral-2501] Synthesized clean defensive code satisfying Architect security boundaries.",
+    "timestamp": "2026-11-16T16:18:23.350598"
+  },
+  {
+    "memory_id": "mem-7c96565b",
+    "cwe_id": "CWE-89",
+    "vulnerability_title": "Critical SQL Injection via f-string interpolation",
+    "vulnerable_pattern": "query = f\"SELECT * FROM users WHERE id = {user_id}\"",
+    "patched_diff": "--- original.py\n+++ patched.py\n@@ -1,5 +1,8 @@\n def get_user_profile(user_id: int, db_connection):\n+    \"\"\"Securely fetches user profile with parameterized SQL query.\"\"\"\n+    if not isinstance(user_id, int):\n+        raise ValueError(\"Invalid user_id type\")\n     cursor = db_connection.cursor()\n-    query = f\"SELECT * FROM users WHERE id = {user_id}\"\n-    cursor.execute(query)\n-    return cursor.fetchone()\n+    query = \"SELECT id, username, email FROM users WHERE id = %s\"\n+    cursor.execute(query, (user_id,))\n+    return cursor.fetchone()",
+    "explanation": "[mistralai/codestral-2501] Synthesized clean defensive code satisfying Architect security boundaries.",
+    "timestamp": "2026-11-16T16:19:49.759814"
   }
 ]

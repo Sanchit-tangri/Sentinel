@@ -295,13 +295,46 @@ export default function MultiFileSentinelStudio() {
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 rows={2}
-                placeholder="e.g. Build a fullstack e-commerce application with product catalog, cart API, and PostgreSQL schema..."
+                placeholder="e.g. Build an online crypto trading terminal or a hospital appointment booking system..."
                 className="w-full bg-transparent font-medium text-sm text-white placeholder:text-slate-500 focus:outline-none resize-none leading-relaxed"
               />
 
-              <div className="flex justify-between items-center pt-1 border-t border-slate-800">
-                <span className="text-[11px] font-mono text-slate-400">
-                  Generates: backend/app.py • database/schema.sql • frontend/index.html • requirements.txt
+              {/* Dynamic Domain Quick Chips */}
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-800">
+                <span className="text-[11px] text-slate-500 font-bold self-center">Try Fullstack:</span>
+                <button
+                  type="button"
+                  onClick={() => setPrompt("Build an interactive e-commerce store with product catalog, shopping cart, and price calculation")}
+                  className="text-[11px] px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+                >
+                  🛍️ E-Commerce & Cart
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPrompt("Build an interactive Kanban task board with columns: To Do, In Progress, and Done")}
+                  className="text-[11px] px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+                >
+                  📋 TaskFlow Kanban
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPrompt("Build a hospital doctor appointment booking system with date slots and patient validation")}
+                  className="text-[11px] px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+                >
+                  🏥 Doctor Appointments
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPrompt("Build a crypto trading portfolio terminal with real-time assets, balance, and buy simulation")}
+                  className="text-[11px] px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+                >
+                  ⚡ Crypto Trading
+                </button>
+              </div>
+
+              <div className="flex justify-between items-center pt-2 border-t border-slate-800/80">
+                <span className="text-[11px] font-mono text-cyan-400">
+                  ✨ Generates: backend/app.py • database/schema.sql • frontend/app.js (Dynamic JS) • frontend/index.html
                 </span>
                 <button
                   onClick={handleGenerateFullstack}
