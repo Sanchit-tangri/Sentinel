@@ -1,16 +1,18 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from agents.orchestrator import RemediationOrchestrator
 from agents.auditor import AuditorAgent
+from agents.developer import DeveloperAgent
 from rag.memory_store import MemoryStore
+from routing.omniroute_client import OmniRouteClient, ModelTier
 
 app = FastAPI(
     title="Sentinel Multi-Agent API",
-    description="Backend for Sentinel Autonomous Security Patching Framework with Self-Learning RAG",
-    version="0.2.0"
+    description="Backend for Sentinel Autonomous Security Patching Framework with OmniRoute and Context Remembrance RAG",
+    version="0.3.0"
 )
 
 # Enable CORS for Next.js frontend communication
@@ -22,30 +24,68 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Shared memory & orchestrator instance
+# Shared singletons
 memory_store = MemoryStore()
-orchestrator = RemediationOrchestrator(memory_store=memory_store)
+omniroute_client = OmniRouteClient()
+orchestrator = RemediationOrchestrator(
+    memory_store=memory_store,
+    omniroute_client=omniroute_client
+)
 auditor = AuditorAgent()
+developer = DeveloperAgent(omniroute_client=omniroute_client)
+
 
 class CodePayload(BaseModel):
     code: str
     filename: str = "snippet.py"
+    session_id: Optional[str] = None
+
+
+class GeneratePayload(BaseModel):
+    prompt: str
+    tech_stack: str = "python"
+    session_id: Optional[str] = None
+
 
 class QueryMemoryPayload(BaseModel):
     query: str
     top_k: int = 3
 
+
 @app.get("/")
 def read_root():
     return {
         "message": "Welcome to Sentinel Multi-Agent Security API",
-        "version": "0.2.0",
-        "features": ["Modular Agents", "Self-Learning RAG", "OWASP Remediation Loop"]
+        "version": "0.3.0",
+        "features": [
+            "Modular Agents",
+            "OmniRoute Dynamic Multi-Model Gateway",
+            "Context Remembrance Engine (Anti-Hallucination)",
+            "Self-Learning RAG Ingestion",
+            "OWASP Remediation Loop"
+        ]
     }
+
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "sentinel-backend"}
+    return {
+        "status": "ok",
+        "service": "sentinel-backend",
+        "omniroute_active_model": omniroute_client.last_model_used or "initialized",
+        "simulation_mode": omniroute_client.force_simulation
+    }
+
+
+@app.post("/api/generate")
+def generate_code_endpoint(payload: GeneratePayload):
+    """
+    Generate defensive code satisfying architectural security invariants
+    using OmniRoute and Context Remembrance.
+    """
+    result = developer.implement(task_prompt=payload.prompt)
+    return result
+
 
 @app.post("/api/audit")
 def audit_code_endpoint(payload: CodePayload):
@@ -53,11 +93,20 @@ def audit_code_endpoint(payload: CodePayload):
     result = auditor.audit_code(code=payload.code, filename=payload.filename)
     return result.model_dump()
 
+
 @app.post("/api/remediate")
 def remediate_code_endpoint(payload: CodePayload):
-    """Run the complete Architect -> Auditor -> Patcher loop and record lessons in RAG."""
-    result = orchestrator.remediate_code(raw_code=payload.code, filename=payload.filename)
+    """
+    Run the complete Architect -> Auditor -> Patcher loop with
+    OmniRoute and Context Remembrance, recording verified fixes in RAG memory.
+    """
+    result = orchestrator.remediate_code(
+        raw_code=payload.code,
+        filename=payload.filename,
+        session_id=payload.session_id
+    )
     return result
+
 
 @app.post("/api/rag/search")
 def search_remediation_memory(payload: QueryMemoryPayload):

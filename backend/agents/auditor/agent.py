@@ -17,9 +17,10 @@ class AuditorAgent:
 
         # 1. SQL Injection Detection (OWASP A03 / CWE-89)
         sqli_patterns = [
-            (r'execute\s*\(\s*["\'].*(SELECT|INSERT|UPDATE|DELETE).*["\']\s*%\s*\(?', "CWE-89", "Potential SQL Injection via % string formatting", SeverityLevel.CRITICAL),
-            (r'execute\s*\(\s*f["\'].*(SELECT|INSERT|UPDATE|DELETE).*\{', "CWE-89", "Critical SQL Injection via f-string interpolation", SeverityLevel.CRITICAL),
-            (r'cursor\.execute\s*\(\s*["\'].*(SELECT|INSERT|UPDATE|DELETE).*\+\s*', "CWE-89", "SQL Injection via string concatenation", SeverityLevel.CRITICAL),
+            (r'f["\'].*(SELECT|INSERT|UPDATE|DELETE).*\{', "CWE-89", "Critical SQL Injection via f-string interpolation", SeverityLevel.CRITICAL),
+            (r'["\'].*(SELECT|INSERT|UPDATE|DELETE).*["\']\s*%\s*', "CWE-89", "Potential SQL Injection via % string formatting", SeverityLevel.CRITICAL),
+            (r'["\'].*(SELECT|INSERT|UPDATE|DELETE).*\+\s*[a-zA-Z0-9_]', "CWE-89", "SQL Injection via string concatenation", SeverityLevel.CRITICAL),
+            (r'["\'].*(SELECT|INSERT|UPDATE|DELETE).*\.format\s*\(', "CWE-89", "SQL Injection via .format() interpolation", SeverityLevel.CRITICAL),
         ]
 
         # 2. Command Injection (CWE-78)
