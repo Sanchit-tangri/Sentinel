@@ -86,6 +86,7 @@ class DeveloperAgent:
         return {
             "code": extracted_code,
             "raw_response": gen_result.content,
+            "sandbox_html": gen_result.sandbox_html,
             "model_used": gen_result.model_used,
             "tier": gen_result.tier.value,
             "latency_ms": gen_result.latency_ms,

@@ -186,6 +186,7 @@ class RemediationOrchestrator:
             session_ledger=ledger
         )
         initial_code = dev_result["code"]
+        sandbox_html = dev_result.get("sandbox_html", "")
         line_count = len(initial_code.splitlines())
 
         developer_thought = (
@@ -353,6 +354,7 @@ class RemediationOrchestrator:
             "timeline": timeline,
             "initial_code": initial_code,
             "final_code": final_code,
+            "sandbox_html": sandbox_html,
             "patch_diff": patch_diff,
             "patch_explanation": patch_explanation,
             "diff_items": diff_items,
