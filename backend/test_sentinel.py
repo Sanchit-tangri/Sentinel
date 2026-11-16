@@ -179,6 +179,39 @@ def test_complete_remediation_orchestrator_loop():
     print("PASS: test_complete_remediation_orchestrator_loop (Remediated & Persisted to RAG)")
 
 
+def test_project_manager_zip_flow():
+    import io
+    import zipfile
+    from workspace.project_manager import ProjectManager
+
+    manager = ProjectManager()
+    
+    # Create test zip in-memory with 2 vulnerable files
+    zbuf = io.BytesIO()
+    with zipfile.ZipFile(zbuf, "w") as z:
+        z.writestr("backend/api.py", "import os\nos.system('ping ' + host)")
+        z.writestr("backend/db.py", "query = f'SELECT * FROM users WHERE id = {uid}'\ncursor.execute(query)")
+        z.writestr("frontend/index.html", "<h1>My App</h1>")
+
+    files = manager.extract_zip(zbuf.getvalue())
+    assert len(files) == 3
+    assert "backend/api.py" in files
+    assert "frontend/index.html" in files
+
+    workspace = manager.process_project(files, project_name="Test Zip App")
+    assert workspace.total_files == 3
+    assert workspace.vulnerable_files_count == 2
+    assert workspace.remediated_count >= 2
+    assert workspace.files["backend/api.py"].is_modified
+    assert workspace.files["backend/db.py"].is_modified
+
+    # Verify download zip creation
+    clean_zip = manager.get_cached_zip(workspace.session_id)
+    assert clean_zip is not None
+    assert len(clean_zip) > 0
+    print("PASS: test_project_manager_zip_flow (ZIP Extracted, Scanned, Remediated & Packaged)")
+
+
 if __name__ == "__main__":
     print("=== Running Sentinel Context Remembrance & OmniRoute Test Suite ===")
     test_session_ledger_ast_extraction()
@@ -187,4 +220,5 @@ if __name__ == "__main__":
     test_omniroute_routing_and_model_switching()
     test_developer_agent_synthesis()
     test_complete_remediation_orchestrator_loop()
+    test_project_manager_zip_flow()
     print("=== ALL TESTS PASSED SUCCESSFULLY! ===")

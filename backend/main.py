@@ -4,7 +4,9 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException
+import io
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
@@ -14,6 +16,7 @@ from agents.auditor import AuditorAgent
 from agents.developer import DeveloperAgent
 from rag.memory_store import MemoryStore
 from routing.omniroute_client import OmniRouteClient, ModelTier
+from workspace.project_manager import ProjectManager
 
 app = FastAPI(
     title="Sentinel Multi-Agent API",
@@ -39,6 +42,12 @@ orchestrator = RemediationOrchestrator(
 )
 auditor = AuditorAgent()
 developer = DeveloperAgent(omniroute_client=omniroute_client)
+project_manager = ProjectManager(
+    auditor=auditor,
+    patcher=orchestrator.patcher,
+    omniroute=omniroute_client,
+    memory_store=memory_store
+)
 
 
 class CodePayload(BaseModel):
@@ -139,3 +148,62 @@ def search_remediation_memory(payload: QueryMemoryPayload):
     """Retrieve learned remediation patterns from RAG store."""
     results = memory_store.search_similar_remediations(query=payload.query, top_k=payload.top_k)
     return {"query": payload.query, "results": results}
+
+
+# ==============================================================================
+# Multi-File System & ZIP Ingestion / Export Endpoints
+# ==============================================================================
+
+class FullstackScaffoldPayload(BaseModel):
+    prompt: str
+
+
+@app.post("/api/project/upload-zip")
+async def upload_zip_project_endpoint(file: UploadFile = File(...)):
+    """
+    Ingests an entire ZIP codebase, performs whole-repository security scanning,
+    applies surgical patches across all files, and prepares an interactive localhost sandbox.
+    """
+    zip_bytes = await file.read()
+    extracted_files = project_manager.extract_zip(zip_bytes)
+    if not extracted_files:
+        raise HTTPException(
+            status_code=400,
+            detail="No readable source code files found in archive (supported: .py, .js, .ts, .html, .css, .sql, etc.)"
+        )
+    workspace = project_manager.process_project(
+        files=extracted_files,
+        project_name=file.filename or "Uploaded Codebase"
+    )
+    return workspace.model_dump()
+
+
+@app.post("/api/project/generate-fullstack")
+def generate_fullstack_project_endpoint(payload: FullstackScaffoldPayload):
+    """
+    Generates a complete multi-file fullstack project scaffold from a prompt:
+    backend/app.py, database/schema.sql, frontend/index.html, requirements.txt,
+    and runs a full security audit & localhost sandbox preview.
+    """
+    scaffold_files = project_manager.generate_fullstack_scaffold(payload.prompt)
+    workspace = project_manager.process_project(
+        files=scaffold_files,
+        project_name="Fullstack Microservice"
+    )
+    return workspace.model_dump()
+
+
+@app.get("/api/project/download-zip/{session_id}")
+def download_remediated_zip_endpoint(session_id: str):
+    """
+    Exports the complete sanitized and patched multi-file project as a clean ZIP archive.
+    """
+    zip_bytes = project_manager.get_cached_zip(session_id)
+    if not zip_bytes:
+        raise HTTPException(status_code=404, detail="Workspace session not found or expired.")
+    return StreamingResponse(
+        io.BytesIO(zip_bytes),
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename=sentinel-remediated-{session_id}.zip"}
+    )
+
