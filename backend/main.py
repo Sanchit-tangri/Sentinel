@@ -53,6 +53,11 @@ class GeneratePayload(BaseModel):
     session_id: Optional[str] = None
 
 
+class PipelinePayload(BaseModel):
+    prompt: str
+    filename: str = "application.py"
+
+
 class QueryMemoryPayload(BaseModel):
     query: str
     top_k: int = 3
@@ -81,6 +86,21 @@ def health_check():
         "omniroute_active_model": omniroute_client.last_model_used or "initialized",
         "simulation_mode": omniroute_client.force_simulation
     }
+
+
+@app.post("/api/pipeline")
+def run_pipeline_endpoint(payload: PipelinePayload):
+    """
+    Unified Autonomous Pipeline:
+    From prompt to Architect invariants -> Developer OmniRoute synthesis
+    -> Auditor verification -> Patcher remediation -> RAG persistence.
+    Returns the complete cinematic timeline of agents in action.
+    """
+    result = orchestrator.synthesize_and_secure(
+        prompt=payload.prompt,
+        filename=payload.filename
+    )
+    return result
 
 
 @app.post("/api/generate")

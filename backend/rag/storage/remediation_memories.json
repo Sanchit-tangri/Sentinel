@@ -25,5 +25,14 @@
     "patched_diff": "--- original.py\n+++ patched.py\n@@ -1 +1,7 @@\n-eval(user_input)+import ast\n+\n+def parse_user_expression(expr: str):\n+    \"\"\"Safely evaluates a literal expression using ast.literal_eval.\"\"\"\n+    if not isinstance(expr, str):\n+        raise ValueError(\"Expression must be a string\")\n+    return ast.literal_eval(expr)",
     "explanation": "[mistralai/codestral-2501] Remediated vulnerabilities and enforced strict input parameter validation.",
     "timestamp": "2026-11-16T12:32:19.086376"
+  },
+  {
+    "memory_id": "mem-42014e0e",
+    "cwe_id": "CWE-89",
+    "vulnerability_title": "Critical SQL Injection via f-string interpolation",
+    "vulnerable_pattern": "query = f\"SELECT * FROM users WHERE id = {user_id}\"",
+    "patched_diff": "--- original.py\n+++ patched.py\n@@ -1,5 +1,8 @@\n def get_user_profile(user_id: int, db_connection):\n+    \"\"\"Securely fetches user profile with parameterized SQL query.\"\"\"\n+    if not isinstance(user_id, int):\n+        raise ValueError(\"Invalid user_id type\")\n     cursor = db_connection.cursor()\n-    query = f\"SELECT * FROM users WHERE id = {user_id}\"\n-    cursor.execute(query)\n-    return cursor.fetchone()\n+    query = \"SELECT id, username, email FROM users WHERE id = %s\"\n+    cursor.execute(query, (user_id,))\n+    return cursor.fetchone()",
+    "explanation": "[mistralai/codestral-2501] Remediated vulnerabilities and enforced strict input parameter validation.",
+    "timestamp": "2026-11-16T13:44:20.293805"
   }
 ]
