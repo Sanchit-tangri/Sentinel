@@ -4,15 +4,19 @@ import { useState, useEffect, useRef } from "react";
 
 const BACKEND_URL = "http://localhost:8000";
 
+interface DiffItem {
+  type: "removed" | "added";
+  code: string;
+  reason: string;
+}
+
 interface TimelineStep {
   id: string;
   agent: string;
   role: string;
   model: string;
   tier: string;
-  status: "pending" | "running" | "completed";
   thought: string;
-  latency_ms?: number;
   details: any;
 }
 
@@ -24,232 +28,308 @@ interface PipelineResponse {
   final_code: string;
   patch_diff: string;
   patch_explanation: string;
+  diff_items?: DiffItem[];
   is_secure: boolean;
-  architect_spec: any;
   findings: any[];
   models_used: string[];
 }
 
-const PRESET_PROMPTS = [
+// The 4 Hero Robot Crew Members
+const CREW = [
   {
-    label: "🔐 Full Auth & RBAC Microservice",
-    prompt:
-      "Build a complete production-grade authentication microservice with password hashing (bcrypt), JWT generation, role-based access control (admin vs user), and strict input validation.",
+    id: "architect",
+    name: "Dex",
+    title: "The Hoodie Hacker",
+    tagline: "Strategic Architect",
+    color: "cyan",
+    accentBg: "from-cyan-500/20 to-blue-500/10",
+    borderActive: "border-cyan-400 shadow-cyan-500/30",
+    textCol: "text-cyan-400",
+    soundEffect: "*HACKING PERIMETER*",
+    quote: "Yo! Pulling up my hoodie. Calculating zero-trust boundaries so hackers cry.",
+    avatar: (
+      <div className="relative w-16 h-16 flex items-center justify-center animate-bob">
+        {/* Cute Hoodie Bot SVG */}
+        <div className="w-14 h-14 rounded-2xl bg-slate-900 border-2 border-cyan-400 shadow-lg shadow-cyan-500/30 flex flex-col items-center justify-center relative overflow-hidden">
+          {/* Hoodie rim */}
+          <div className="absolute top-0 inset-x-0 h-4 bg-cyan-950/80 border-b border-cyan-500/40 rounded-t-xl" />
+          <div className="flex gap-2 items-center mt-2 z-10">
+            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" />
+          </div>
+          {/* Visor line */}
+          <div className="w-7 h-1 bg-cyan-300 rounded-full mt-1.5 shadow-sm shadow-cyan-400" />
+          {/* Hoodie strings */}
+          <div className="absolute bottom-1 left-3 w-0.5 h-3 bg-cyan-400 rounded-full" />
+          <div className="absolute bottom-1 right-3 w-0.5 h-3 bg-cyan-400 rounded-full" />
+        </div>
+        <span className="absolute -top-1.5 -right-1.5 text-xs bg-cyan-500 text-slate-950 px-1 py-0.2 rounded font-black font-mono">
+          CAP
+        </span>
+      </div>
+    ),
   },
   {
-    label: "💳 Secure Payment Webhook & Ledger",
-    prompt:
-      "Generate a secure payment processing webhook that validates HMAC signatures, logs transaction events into a database using parameterized queries, and guards against replay attacks.",
+    id: "developer",
+    name: "Pixel",
+    title: "Juice-Box Coder",
+    tagline: "OmniRoute Builder",
+    color: "amber",
+    accentBg: "from-amber-500/20 to-orange-500/10",
+    borderActive: "border-amber-400 shadow-amber-500/30",
+    textCol: "text-amber-400",
+    soundEffect: "*SLURP*",
+    quote: "Slurrrp! 🧃 OmniRoute routed me to DeepSeek! Typing at 260 WPM, let's ship it!",
+    avatar: (
+      <div className="relative w-16 h-16 flex items-center justify-center animate-juice">
+        {/* Pixel Bot with Juice Box */}
+        <div className="w-14 h-14 rounded-2xl bg-slate-900 border-2 border-amber-400 shadow-lg shadow-amber-500/30 flex flex-col items-center justify-center relative">
+          {/* Big happy anime eyes */}
+          <div className="flex gap-2.5 items-center">
+            <span className="w-2.5 h-3 rounded-full bg-amber-300 transform scale-y-110" />
+            <span className="w-2.5 h-3 rounded-full bg-amber-300 transform scale-y-110" />
+          </div>
+          <span className="text-[10px] text-amber-200 font-bold mt-0.5">ᴗ</span>
+          {/* Juice Box held in hand */}
+          <div className="absolute -bottom-1 -right-2 w-5 h-6 bg-rose-500 rounded border border-rose-300 flex items-center justify-center text-[7px] font-black text-white shadow">
+            🧃
+          </div>
+        </div>
+      </div>
+    ),
   },
   {
-    label: "⚡ User Lookup (SQLi Auto-Remediated)",
-    prompt:
-      "Create a user lookup function query_user(user_id, db_connection) that takes user input, performs a SQL lookup, and enforces defensive sanitization so no SQL injection can occur.",
+    id: "auditor",
+    name: "Snooze",
+    title: "Sleepy-Head Auditor",
+    tagline: "Vulnerability Hunter",
+    color: "purple",
+    accentBg: "from-purple-500/20 to-violet-500/10",
+    borderActive: "border-purple-400 shadow-purple-500/30",
+    textCol: "text-purple-400",
+    soundEffect: "*LASER SCAN*",
+    quote: "Yaaawn... 💤 Wait! *beep* My sleepy laser eye caught a security vulnerability!",
+    avatar: (
+      <div className="relative w-16 h-16 flex items-center justify-center animate-bob">
+        {/* Floating Zzz */}
+        <div className="absolute -top-3 right-0 text-[10px] font-bold text-purple-300 animate-zzz">
+          Zzz
+        </div>
+        {/* Sleepy Bot with Nightcap */}
+        <div className="w-14 h-14 rounded-full bg-slate-900 border-2 border-purple-400 shadow-lg shadow-purple-500/30 flex flex-col items-center justify-center relative">
+          {/* Nightcap */}
+          <div className="absolute -top-2 left-2 w-5 h-4 bg-purple-600 rounded-t-full rotate-12 border border-purple-300" />
+          {/* Droopy sleepy eyes */}
+          <div className="flex gap-2 items-center mt-1">
+            <span className="w-3 h-1 bg-purple-300 rounded-full" />
+            <span className="w-3 h-1 bg-purple-300 rounded-full" />
+          </div>
+          {/* Red Scanner Eye at Center */}
+          <div className="w-2 h-2 rounded-full bg-rose-500 animate-ping mt-1.5" />
+        </div>
+      </div>
+    ),
   },
   {
-    label: "📦 Safe File Processing & S3 Uploader",
-    prompt:
-      "Write a secure file processing utility that validates MIME types, sanitizes filenames to prevent path traversal (CWE-22), and checks file size limits before processing.",
+    id: "patcher",
+    name: "Glitch",
+    title: "The Dancing Patcher",
+    tagline: "Remediation Dancer",
+    color: "pink",
+    accentBg: "from-pink-500/20 to-fuchsia-500/10",
+    borderActive: "border-pink-400 shadow-pink-500/30",
+    textCol: "text-pink-400",
+    soundEffect: "*DISCO BEAT*",
+    quote: "Ayyy! Break it down, fix it up! 🕺 Swapping the risky code for the secure groove!",
+    avatar: (
+      <div className="relative w-16 h-16 flex items-center justify-center animate-dance">
+        {/* Dancing Glitch Bot */}
+        <div className="w-14 h-14 rounded-2xl bg-slate-900 border-2 border-pink-500 shadow-lg shadow-pink-500/40 flex flex-col items-center justify-center relative">
+          {/* Cool Sunglasses */}
+          <div className="w-10 h-3 bg-pink-500 rounded-sm flex items-center justify-center shadow">
+            <div className="w-8 h-1 bg-slate-950" />
+          </div>
+          {/* Smiling mouth */}
+          <div className="w-4 h-1.5 bg-yellow-400 rounded-b-full mt-1.5" />
+          {/* Golden Wrench */}
+          <div className="absolute -bottom-1 -left-2 text-xs">🔧</div>
+          <div className="absolute -top-2 -right-1 text-xs">✨</div>
+        </div>
+      </div>
+    ),
   },
 ];
 
-export default function SentinelCinematicApp() {
-  const [prompt, setPrompt] = useState<string>(PRESET_PROMPTS[0].prompt);
+const FUN_PROMPT_SUGGESTIONS = [
+  "Build an interactive retro arcade Snake Game with high-score tracking",
+  "Build an interactive portfolio website for a senior software developer",
+  "Create an authentication service with JWT and password hashing",
+  "Write a safe user lookup query_user(id) protected against SQL injection",
+];
+
+export default function GameStudioSentinel() {
+  const [prompt, setPrompt] = useState<string>(FUN_PROMPT_SUGGESTIONS[1]);
   const [isRunning, setIsRunning] = useState<boolean>(false);
-  const [currentSceneIndex, setCurrentSceneIndex] = useState<number>(-1);
+  const [activeAgentIndex, setActiveAgentIndex] = useState<number>(0);
+  const [screenRumble, setScreenRumble] = useState<boolean>(false);
   const [pipelineData, setPipelineData] = useState<PipelineResponse | null>(null);
-  const [selectedAgentId, setSelectedAgentId] = useState<string>("architect");
-  const [serverHealth, setServerHealth] = useState<{
-    status: string;
-    omniroute_active_model: string;
-    simulation_mode: boolean;
-  } | null>(null);
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
 
-  const movieRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
 
-  // Poll backend health
-  useEffect(() => {
-    checkHealth();
-    const interval = setInterval(checkHealth, 8000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const checkHealth = async () => {
-    try {
-      const res = await fetch(`${BACKEND_URL}/health`);
-      if (res.ok) {
-        const data = await res.json();
-        setServerHealth(data);
-      } else {
-        setServerHealth(null);
-      }
-    } catch {
-      setServerHealth(null);
-    }
+  const triggerRumble = () => {
+    setScreenRumble(true);
+    setTimeout(() => setScreenRumble(false), 380);
   };
 
-  const handleRunPipeline = async () => {
+  const handleLaunchPipeline = async () => {
     if (!prompt.trim() || isRunning) return;
     setIsRunning(true);
     setPipelineData(null);
-    setCurrentSceneIndex(0);
+    setActiveAgentIndex(0);
 
-    // Scroll smoothly to movie stage
-    setTimeout(() => {
-      movieRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 150);
+    triggerRumble();
+    stageRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
 
     try {
+      // Start pipeline request
       const res = await fetch(`${BACKEND_URL}/api/pipeline`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: prompt.trim() }),
       });
 
-      if (!res.ok) {
-        throw new Error(`Server returned status ${res.status}`);
-      }
-
+      if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
       const data: PipelineResponse = await res.json();
       setPipelineData(data);
 
-      // Play through the agent movie sequence dynamically
-      const totalSteps = data.timeline.length;
-      for (let i = 0; i < totalSteps; i++) {
-        setCurrentSceneIndex(i);
-        setSelectedAgentId(data.timeline[i].id);
-        // Cinematic dwell time per agent scene so the user observes each step
-        await new Promise((resolve) => setTimeout(resolve, 1100));
+      // Cinematic Stage Director: Animate each bot taking turn in the spotlight
+      for (let i = 0; i < CREW.length; i++) {
+        setActiveAgentIndex(i);
+        triggerRumble();
+        await new Promise((resolve) => setTimeout(resolve, 1200));
       }
-      setCurrentSceneIndex(totalSteps); // all completed
-      setSelectedAgentId("developer");
+      setActiveAgentIndex(3); // Land on Glitch or Developer
     } catch (err: any) {
-      alert("Failed to connect to Sentinel backend: " + err.message);
-      setCurrentSceneIndex(-1);
+      alert("Error contacting Sentinel: " + err.message);
     } finally {
       setIsRunning(false);
-      checkHealth();
     }
   };
 
-  const handleCopyCode = (codeText: string) => {
-    navigator.clipboard.writeText(codeText);
-    setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 2000);
-  };
-
-  const activeScene = pipelineData?.timeline?.find((t) => t.id === selectedAgentId);
+  const currentHero = CREW[activeAgentIndex];
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-emerald-500/30">
-      {/* 1. Header Bar */}
-      <header className="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur sticky top-0 z-50 px-6 py-3.5 flex items-center justify-between">
+    <div
+      className={`min-h-screen text-slate-100 flex flex-col font-sans transition-all duration-300 animate-cyber-grid ${
+        screenRumble ? "animate-screen-shake" : ""
+      }`}
+    >
+      {/* Dynamic Background Glow based on active bot */}
+      <div
+        className={`fixed inset-0 pointer-events-none opacity-20 transition-all duration-700 bg-radial ${
+          activeAgentIndex === 0
+            ? "from-cyan-600/30 via-transparent to-transparent"
+            : activeAgentIndex === 1
+            ? "from-amber-500/30 via-transparent to-transparent"
+            : activeAgentIndex === 2
+            ? "from-purple-600/30 via-transparent to-transparent"
+            : "from-pink-600/30 via-transparent to-transparent"
+        }`}
+      />
+
+      {/* Modern Game Header */}
+      <header className="relative z-10 px-6 py-4 flex items-center justify-between border-b border-slate-800/80 bg-slate-950/70 backdrop-blur">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center text-white text-lg font-bold shadow-lg shadow-emerald-500/20">
-            🛡️
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-pink-500 via-amber-400 to-cyan-400 flex items-center justify-center text-xl shadow-lg shadow-pink-500/20 animate-bob">
+            🤖
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-extrabold tracking-tight text-white text-base">SENTINEL</span>
-              <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800/80">
-                v0.3.0 Live Mesh
+              <span className="font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-amber-300 to-pink-400 text-lg">
+                SENTINEL BOT SQUAD
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                OMNIROUTE READY
               </span>
             </div>
-            <p className="text-[11px] text-slate-400">
-              Autonomous Multi-Agent Security & OmniRoute Routing Architecture
+            <p className="text-xs text-slate-400">
+              Autonomous AI Agent Team Designing, Coding & Self-Healing Live
             </p>
           </div>
         </div>
 
-        {/* System & OmniRoute status */}
-        <div className="flex items-center gap-2 text-xs font-mono">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800">
-            <span
-              className={`w-2 h-2 rounded-full ${
-                serverHealth ? "bg-emerald-400 animate-pulse" : "bg-rose-500"
+        {/* Live Bot Crew Roster Header */}
+        <div className="hidden sm:flex items-center gap-2">
+          {CREW.map((bot, idx) => (
+            <button
+              key={bot.id}
+              onClick={() => setActiveAgentIndex(idx)}
+              className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 ${
+                activeAgentIndex === idx
+                  ? `bg-slate-800 border-white text-white shadow-lg shadow-${bot.color}-500/30 scale-105`
+                  : "bg-slate-900/60 border-slate-800 text-slate-400 hover:text-slate-200"
               }`}
-            />
-            <span className="text-slate-300">
-              {serverHealth ? "Backend Active" : "Backend Offline"}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800">
-            <span className="text-indigo-400">OmniRoute:</span>
-            <span className="text-slate-200">
-              {serverHealth?.omniroute_active_model || "Standby"}
-            </span>
-            {serverHealth?.simulation_mode && (
-              <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                Simulation
-              </span>
-            )}
-          </div>
+            >
+              <span>{bot.name}</span>
+            </button>
+          ))}
         </div>
       </header>
 
-      {/* Main Single Page Canvas */}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-6 py-8 flex flex-col gap-10">
-        {/* 2. Hero Command Prompt Box */}
-        <section className="flex flex-col gap-4 text-center items-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-medium">
-            <span>✨ Describe what to build — Sentinel architects, synthesizes, and self-heals</span>
-          </div>
-          <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight max-w-2xl">
-            From Single Prompt to <span className="text-emerald-400">Defensive Application</span>
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-400 max-w-xl">
-            Powered by OmniRoute model routing with an anti-hallucination Context Remembrance Engine.
-            Watch the multi-agent mesh collaborate in real time.
+      {/* Main Single-Page Playground */}
+      <main className="relative z-10 flex-1 max-w-5xl w-full mx-auto px-6 py-8 flex flex-col gap-8">
+        {/* 1. Prompt Command Bar (Clean & Focused) */}
+        <section className="flex flex-col items-center text-center gap-4">
+          <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white">
+            What are we building today?
+          </h1>
+          <p className="text-sm text-slate-400 max-w-lg">
+            Type anything — a portfolio, an arcade game, or an API. The Bot Squad architects the
+            rules, writes the code, scans for flaws, and dances while patching!
           </p>
 
-          {/* Big Command Box */}
-          <div className="w-full max-w-3xl mt-2 bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-2xl shadow-emerald-950/20 flex flex-col gap-3 focus-within:border-emerald-500/50 transition-all">
+          <div className="w-full max-w-2xl bg-slate-900/90 border-2 border-slate-700/80 rounded-3xl p-4 shadow-2xl flex flex-col gap-3 focus-within:border-cyan-400 transition-all">
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              rows={3}
-              placeholder="e.g. Build an authenticated payment processing service with webhook validation and database persistence..."
-              className="w-full bg-transparent font-sans text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none resize-none leading-relaxed"
+              rows={2}
+              placeholder="e.g. Build an interactive portfolio website for a software developer..."
+              className="w-full bg-transparent font-medium text-sm text-white placeholder:text-slate-500 focus:outline-none resize-none leading-relaxed"
             />
 
-            {/* Quick preset chips */}
-            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/80">
-              <span className="text-[11px] text-slate-500 font-medium">Quick Presets:</span>
-              {PRESET_PROMPTS.map((item, idx) => (
+            {/* Quick Suggestion Pills */}
+            <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-800">
+              <span className="text-[11px] text-slate-500 font-bold self-center">Try:</span>
+              {FUN_PROMPT_SUGGESTIONS.map((s, idx) => (
                 <button
                   key={idx}
-                  onClick={() => setPrompt(item.prompt)}
-                  className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition-colors border border-slate-700/50"
+                  onClick={() => setPrompt(s)}
+                  className="text-[11px] px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
                 >
-                  {item.label}
+                  {s.slice(0, 38)}...
                 </button>
               ))}
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex items-center justify-between pt-1">
-              <span className="text-[11px] text-slate-500 font-mono">
-                Model: OmniRoute Dynamic Gateway (Claude / DeepSeek / Qwen)
-              </span>
+            <div className="flex justify-end pt-1">
               <button
-                onClick={handleRunPipeline}
+                onClick={handleLaunchPipeline}
                 disabled={isRunning || !prompt.trim()}
-                className={`py-2.5 px-6 rounded-xl font-semibold text-xs tracking-wide transition-all shadow-lg flex items-center gap-2 ${
+                className={`py-3 px-8 rounded-2xl font-black text-sm tracking-wide transition-all shadow-xl flex items-center gap-2 ${
                   isRunning
                     ? "bg-slate-800 text-slate-400 cursor-not-allowed border border-slate-700"
-                    : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/40 hover:shadow-emerald-900/60 active:scale-95"
+                    : "bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 hover:opacity-90 text-white shadow-pink-500/20 active:scale-95"
                 }`}
               >
                 {isRunning ? (
                   <>
-                    <span className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
-                    <span>Orchestrating Agent Mesh...</span>
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>The Bot Squad is Working...</span>
                   </>
                 ) : (
                   <>
-                    <span>🚀 Launch Pipeline</span>
+                    <span>🎮 Launch Bot Squad</span>
                   </>
                 )}
               </button>
@@ -257,332 +337,167 @@ export default function SentinelCinematicApp() {
           </div>
         </section>
 
-        {/* 3. The Cinematic Multi-Agent Movie Stage */}
-        <section ref={movieRef} className="flex flex-col gap-6">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-            <div>
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <span>🎬 The Agent Mesh in Action</span>
-                {isRunning && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 animate-pulse font-mono">
-                    LIVE EXECUTION
-                  </span>
-                )}
-              </h3>
-              <p className="text-xs text-slate-400">
-                Visualizing thoughts, model switches, and code evolution step-by-step
-              </p>
-            </div>
-
-            {pipelineData && (
-              <div className="text-xs font-mono text-slate-400 flex items-center gap-3">
-                <span>Session: <strong className="text-slate-200">{pipelineData.session_id}</strong></span>
-                <span>•</span>
-                <span className="text-emerald-400 font-semibold">100% Secure Passed</span>
-              </div>
-            )}
+        {/* 2. THE LIVE BOT SQUAD ARENA (Moving Camera & Active Agent Spotlight) */}
+        <section ref={stageRef} className="flex flex-col gap-6">
+          <div className="text-center">
+            <span className="text-xs uppercase tracking-widest font-black text-slate-500">
+              LIVE MULTI-AGENT STAGE
+            </span>
           </div>
 
-          {/* Visual Agent Nodes Track (Movie Scenes) */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            {[
-              {
-                id: "architect",
-                name: "The Architect",
-                icon: "🏛️",
-                tier: "STRATEGIC",
-                role: "Boundaries & Invariants",
-              },
-              {
-                id: "developer",
-                name: "The Developer",
-                icon: "⚡",
-                tier: "CODE_GEN",
-                role: "OmniRoute Code Synthesis",
-              },
-              {
-                id: "auditor",
-                name: "The Auditor",
-                icon: "🔍",
-                tier: "VERIFY",
-                role: "Static AST & CWE Check",
-              },
-              {
-                id: "patcher",
-                name: "The Patcher",
-                icon: "🛠️",
-                tier: "SURGICAL",
-                role: "Self-Healing Diffs",
-              },
-              {
-                id: "rag",
-                name: "RAG Ledger",
-                icon: "🧠",
-                tier: "MEMORY",
-                role: "Episodic Persistence",
-              },
-            ].map((node, idx) => {
-              const isCurrent = isRunning && currentSceneIndex === idx;
-              const isPast =
-                currentSceneIndex > idx || (!isRunning && pipelineData !== null);
-              const isSelected = selectedAgentId === node.id;
-
+          {/* 4 Robot Pods in Spotlight */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {CREW.map((bot, idx) => {
+              const isActive = activeAgentIndex === idx;
               return (
-                <button
-                  key={node.id}
-                  onClick={() => setSelectedAgentId(node.id)}
-                  className={`p-3 rounded-xl border text-left flex flex-col gap-1.5 transition-all relative overflow-hidden ${
-                    isSelected
-                      ? "bg-slate-800/90 border-emerald-500/80 shadow-lg shadow-emerald-950/40"
-                      : isPast
-                      ? "bg-slate-900/80 border-slate-700/80 hover:border-slate-600"
-                      : isCurrent
-                      ? "bg-slate-900 border-indigo-500 shadow-lg shadow-indigo-950/40 animate-pulse"
-                      : "bg-slate-950 border-slate-800/60 opacity-60"
+                <div
+                  key={bot.id}
+                  onClick={() => setActiveAgentIndex(idx)}
+                  className={`cursor-pointer p-4 rounded-3xl border-2 transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden ${
+                    isActive
+                      ? `bg-slate-900 ${bot.borderActive} scale-105 shadow-2xl`
+                      : "bg-slate-950/70 border-slate-800/80 opacity-60 hover:opacity-90"
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="text-lg">{node.icon}</span>
-                    <span
-                      className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
-                        isPast
-                          ? "bg-emerald-950 text-emerald-400 border border-emerald-800/60"
-                          : isCurrent
-                          ? "bg-indigo-950 text-indigo-300 border border-indigo-800"
-                          : "bg-slate-800 text-slate-500"
-                      }`}
-                    >
-                      {isPast ? "DONE" : isCurrent ? "ACTIVE" : "QUEUED"}
-                    </span>
-                  </div>
-
-                  <span className="text-xs font-bold text-slate-200 mt-1">{node.name}</span>
-                  <span className="text-[10px] text-slate-400 line-clamp-1">{node.role}</span>
-
-                  {/* Active glowing indicator */}
-                  {isCurrent && (
-                    <div className="absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-indigo-500 to-emerald-400 animate-pulse" />
+                  {/* Spotlight Cone on active bot */}
+                  {isActive && (
+                    <div className="absolute top-0 inset-x-0 h-16 bg-gradient-to-b from-white/10 to-transparent pointer-events-none" />
                   )}
-                </button>
+
+                  {/* Character Avatar */}
+                  <div className="my-2">{bot.avatar}</div>
+
+                  {/* Name & Tagline */}
+                  <span className="font-black text-base text-white mt-1">{bot.name}</span>
+                  <span className={`text-[11px] font-bold ${bot.textCol}`}>{bot.title}</span>
+
+                  {/* Sound Effect Badge */}
+                  {isActive && (
+                    <span className="mt-2 text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-white animate-bounce">
+                      {bot.soundEffect}
+                    </span>
+                  )}
+                </div>
               );
             })}
           </div>
 
-          {/* Active Agent Thought & Inspection Stage */}
-          {pipelineData ? (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col gap-4 shadow-xl">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
-                <div className="flex items-center gap-2.5">
-                  <span className="text-xl">
-                    {selectedAgentId === "architect"
-                      ? "🏛️"
-                      : selectedAgentId === "developer"
-                      ? "⚡"
-                      : selectedAgentId === "auditor"
-                      ? "🔍"
-                      : selectedAgentId === "patcher"
-                      ? "🛠️"
-                      : "🧠"}
-                  </span>
-                  <div>
-                    <h4 className="text-sm font-bold text-white">
-                      {activeScene?.agent || "Agent Details"}
-                    </h4>
-                    <p className="text-xs text-slate-400">{activeScene?.role}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 font-mono text-xs">
-                  <span className="px-2.5 py-1 rounded bg-slate-950 border border-slate-800 text-indigo-400">
-                    Model: {activeScene?.model || "OmniRoute"}
-                  </span>
-                  <span className="px-2.5 py-1 rounded bg-slate-950 border border-slate-800 text-slate-300">
-                    Tier: {activeScene?.tier || "CORE"}
-                  </span>
-                </div>
+          {/* Active Bot Dialogue & Thought Bubble */}
+          <div
+            className={`p-5 rounded-3xl border-2 transition-all bg-gradient-to-r ${currentHero.accentBg} ${currentHero.borderActive} flex items-start gap-4`}
+          >
+            <div className="hidden sm:block shrink-0">{currentHero.avatar}</div>
+            <div className="flex-1 flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase tracking-wider text-slate-300">
+                  {currentHero.name}&apos;s Live Broadcast:
+                </span>
+                <span className="text-xs font-mono px-2.5 py-0.5 rounded-full bg-slate-900 border border-slate-800 text-slate-200">
+                  OmniRoute Model Switching Active
+                </span>
               </div>
-
-              {/* Agent Thought Stream */}
-              <div className="bg-slate-950 border border-slate-800/90 rounded-xl p-4 flex flex-col gap-2">
-                <div className="flex items-center justify-between text-xs font-semibold text-slate-400">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                    Agent Reasoning & Thinking Stream
-                  </span>
-                  <span className="font-mono text-[11px] text-slate-500">
-                    Zero-Hallucination Verified
-                  </span>
-                </div>
-                <p className="text-xs text-slate-200 leading-relaxed font-sans">
-                  {activeScene?.thought || "Processing task requirements..."}
-                </p>
-              </div>
-
-              {/* Agent Specific Visual Artifacts */}
-              {selectedAgentId === "architect" && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
-                  <div className="p-3.5 bg-slate-950 rounded-xl border border-slate-800">
-                    <span className="font-semibold text-emerald-400 block mb-2 font-sans">
-                      Defined Security Invariants:
-                    </span>
-                    <ul className="space-y-1.5 text-slate-300">
-                      {pipelineData.architect_spec?.security_invariants?.map((inv: string, i: number) => (
-                        <li key={i} className="flex items-start gap-2">
-                          <span className="text-emerald-500">✓</span>
-                          <span>{inv}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="p-3.5 bg-slate-950 rounded-xl border border-slate-800">
-                    <span className="font-semibold text-rose-400 block mb-2 font-sans">
-                      Prohibited Anti-Patterns:
-                    </span>
-                    <ul className="space-y-1.5 text-slate-300">
-                      {pipelineData.architect_spec?.prohibited_patterns?.map((pat: string, i: number) => (
-                        <li key={i} className="flex items-start gap-2">
-                          <span className="text-rose-500">✗</span>
-                          <code>{pat}</code>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              )}
-
-              {selectedAgentId === "developer" && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-slate-400">
-                      Synthesized Code (Developer Agent):
-                    </span>
-                    <button
-                      onClick={() => handleCopyCode(pipelineData.initial_code)}
-                      className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded bg-slate-800"
-                    >
-                      {copiedCode ? "Copied!" : "Copy Code"}
-                    </button>
-                  </div>
-                  <pre className="p-4 bg-slate-950 rounded-xl border border-slate-800 font-mono text-xs text-slate-200 overflow-x-auto max-h-72">
-                    {pipelineData.initial_code}
-                  </pre>
-                </div>
-              )}
-
-              {selectedAgentId === "auditor" && (
-                <div className="space-y-2 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-slate-400">Security Audit Summary:</span>
-                    <span className="px-2 py-0.5 rounded font-mono bg-emerald-950 text-emerald-400 border border-emerald-800">
-                      {pipelineData.findings?.length === 0
-                        ? "0 Vulnerabilities (PASSED)"
-                        : `${pipelineData.findings.length} Vulnerability Flagged`}
-                    </span>
-                  </div>
-                  {pipelineData.findings?.length === 0 ? (
-                    <div className="p-4 bg-slate-950 rounded-xl border border-emerald-900/40 text-emerald-300">
-                      ✓ Code adheres strictly to Architect invariants. Static AST scan confirmed zero injection, secret leak, or unsafe deserialization vulnerabilities.
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {pipelineData.findings.map((f: any, idx: number) => (
-                        <div key={idx} className="p-3 bg-slate-950 rounded-xl border border-rose-900/50">
-                          <span className="font-semibold text-rose-300">{f.title} ({f.cwe_id})</span>
-                          <p className="text-slate-400 mt-1">{f.description}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {selectedAgentId === "patcher" && (
-                <div className="space-y-3">
-                  <span className="text-xs font-semibold text-slate-400 block">
-                    Remediation Diff & Convergence:
-                  </span>
-                  {pipelineData.patch_diff ? (
-                    <pre className="p-4 bg-slate-950 rounded-xl border border-indigo-900/50 font-mono text-xs text-slate-300 overflow-x-auto max-h-60">
-                      {pipelineData.patch_diff}
-                    </pre>
-                  ) : (
-                    <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 text-xs text-slate-400">
-                      No surgical diff required: Code was synthesized defensibly by the Developer Agent on the first pass.
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {selectedAgentId === "rag" && (
-                <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 text-xs font-mono space-y-2">
-                  <div className="flex items-center justify-between text-slate-400">
-                    <span>Session Ledger ID: {pipelineData.session_id}</span>
-                    <span className="text-emerald-400">Status: Persisted</span>
-                  </div>
-                  <p className="text-slate-300 font-sans">
-                    All symbols, invariants, and successful patterns have been ingested into the
-                    Episodic RAG store. If OmniRoute shifts models in the future, these lessons are immediately available.
-                  </p>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="p-10 rounded-2xl bg-slate-900/60 border border-slate-800 flex flex-col items-center justify-center text-center text-slate-500 gap-2">
-              <span className="text-3xl">🎥</span>
-              <p className="text-xs text-slate-400">
-                Click <strong>&ldquo;Launch Pipeline&rdquo;</strong> above to watch the multi-agent movie unfold.
+              <p className="text-sm font-semibold text-white leading-relaxed italic">
+                &ldquo;{currentHero.quote}&rdquo;
               </p>
+              {pipelineData && (
+                <div className="text-xs text-slate-300 font-mono mt-1 pt-2 border-t border-slate-800/50">
+                  ⚡ Agent Insight:{" "}
+                  {pipelineData.timeline.find((t) => t.id === currentHero.id)?.thought ||
+                    "Coordinating with the team to enforce security invariants."}
+                </div>
+              )}
             </div>
-          )}
+          </div>
 
-          {/* 4. Final Production Code Delivery Section */}
+          {/* 3. WHAT PART CHANGED & WHY (Visual Code Transform Inspector) */}
           {pipelineData && (
-            <div className="bg-slate-900 border border-emerald-900/50 rounded-2xl p-6 flex flex-col gap-4 shadow-2xl">
+            <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    <span>📦 Final Production-Ready Code</span>
-                    <span className="text-xs font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
-                      Verified Secure
+                  <h3 className="text-lg font-black text-white flex items-center gap-2">
+                    <span>🔍 What Part Changed & Why</span>
+                    <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 border border-pink-500/30">
+                      Glitch&apos;s Surgical Diff
                     </span>
                   </h3>
                   <p className="text-xs text-slate-400">
-                    Ready to drop directly into your production repository
+                    Transparent line-by-line breakdown of vulnerabilities fixed by the bots
                   </p>
                 </div>
-
-                <button
-                  onClick={() => handleCopyCode(pipelineData.final_code)}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-colors flex items-center gap-1.5 shadow-md shadow-emerald-950"
-                >
-                  {copiedCode ? "✓ Copied to Clipboard" : "Copy Production Code"}
-                </button>
               </div>
 
-              <pre className="p-4 bg-slate-950 rounded-xl border border-emerald-950 font-mono text-xs text-emerald-200 overflow-x-auto whitespace-pre leading-relaxed max-h-96">
-                {pipelineData.final_code}
-              </pre>
-
-              {/* Model Chain & Telemetry Footer */}
-              <div className="flex flex-wrap items-center justify-between gap-3 text-xs font-mono pt-3 border-t border-slate-800 text-slate-400">
-                <div className="flex items-center gap-2">
-                  <span>Models Orchestrated:</span>
-                  {pipelineData.models_used.map((m: string, i: number) => (
-                    <span
-                      key={i}
-                      className="px-2 py-0.5 rounded bg-slate-950 text-indigo-300 border border-slate-800"
+              {/* Show What Changed & Why Cards */}
+              {pipelineData.diff_items && pipelineData.diff_items.length > 0 ? (
+                <div className="space-y-3">
+                  {pipelineData.diff_items.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className={`p-4 rounded-2xl border-2 flex flex-col gap-2 ${
+                        item.type === "removed"
+                          ? "bg-rose-950/30 border-rose-500/50 text-rose-200"
+                          : "bg-emerald-950/30 border-emerald-500/50 text-emerald-200"
+                      }`}
                     >
-                      {m}
-                    </span>
+                      <div className="flex items-center justify-between text-xs font-bold font-mono">
+                        <span>
+                          {item.type === "removed"
+                            ? "🚨 SNOOZE FLAGGED RISKY CODE (REMOVED):"
+                            : "✨ GLITCH DANCED & REPLACED WITH (ADDED):"}
+                        </span>
+                        <span className="uppercase">{item.type}</span>
+                      </div>
+
+                      <pre className="font-mono text-xs p-2.5 rounded-xl bg-slate-950/80 overflow-x-auto">
+                        {item.code}
+                      </pre>
+
+                      <div className="text-xs flex items-center gap-1.5 font-sans font-medium text-slate-300">
+                        <span className="text-amber-400 font-bold">💡 WHY:</span> {item.reason}
+                      </div>
+                    </div>
                   ))}
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-emerald-400">✓ Context Ledger Synchronized</span>
-                  <span>•</span>
-                  <span>Zero Model-Switch Drift</span>
+              ) : (
+                <div className="p-4 rounded-2xl bg-emerald-950/20 border-2 border-emerald-500/40 text-xs text-emerald-300 flex items-center gap-3">
+                  <span className="text-2xl animate-dance">🕺</span>
+                  <div>
+                    <span className="font-bold block text-sm text-emerald-200">
+                      Pixel&apos;s code passed 100% on the first pass!
+                    </span>
+                    Dex&apos;s security invariants were respected during generation. No vulnerabilities
+                    detected; zero patching needed!
+                  </div>
                 </div>
+              )}
+
+              {/* 4. FINAL PRODUCTION CODE BOX (No unwanted clutter) */}
+              <div className="bg-slate-900 border-2 border-slate-800 rounded-3xl p-5 flex flex-col gap-3 shadow-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">📦</span>
+                    <span className="text-sm font-black text-white">
+                      Synthesized Application Code
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono">
+                      Verified Safe
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(pipelineData.final_code);
+                      setCopiedCode(true);
+                      setTimeout(() => setCopiedCode(false), 2000);
+                    }}
+                    className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-colors flex items-center gap-1"
+                  >
+                    {copiedCode ? "✓ Copied!" : "📋 Copy Code"}
+                  </button>
+                </div>
+
+                <pre className="p-4 bg-slate-950 rounded-2xl border border-slate-800 font-mono text-xs text-slate-200 overflow-x-auto whitespace-pre leading-relaxed max-h-96">
+                  {pipelineData.final_code}
+                </pre>
               </div>
             </div>
           )}

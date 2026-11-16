@@ -1,26 +1,121 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --background: #060913;
+  --foreground: #f1f5f9;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: #060913;
+  color: #f1f5f9;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Custom Game-Studio Keyframes */
+@keyframes cyberGrid {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 50px 50px;
+  }
+}
+
+@keyframes danceStep {
+  0%, 100% {
+    transform: translateY(0px) rotate(-4deg) scale(1);
+  }
+  25% {
+    transform: translateY(-8px) rotate(4deg) scale(1.06);
+  }
+  50% {
+    transform: translateY(-3px) rotate(-3deg) scale(0.98);
+  }
+  75% {
+    transform: translateY(-10px) rotate(5deg) scale(1.08);
+  }
+}
+
+@keyframes floatBob {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-7px);
+  }
+}
+
+@keyframes zzzFloat {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.7);
+  }
+  50% {
+    opacity: 0.9;
+    transform: translateY(-12px) translateX(6px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-24px) translateX(12px) scale(1.2);
+  }
+}
+
+@keyframes juiceSip {
+  0%, 100% {
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    transform: rotate(-6deg) scale(1.05);
+  }
+}
+
+@keyframes laserSweep {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+@keyframes screenShake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-3px, 2px); }
+  40% { transform: translate(3px, -2px); }
+  60% { transform: translate(-2px, -2px); }
+  80% { transform: translate(2px, 1px); }
+}
+
+.animate-cyber-grid {
+  background-image: 
+    linear-gradient(to right, rgba(30, 41, 59, 0.3) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(30, 41, 59, 0.3) 1px, transparent 1px);
+  background-size: 32px 32px;
+  animation: cyberGrid 20s linear infinite;
+}
+
+.animate-dance {
+  animation: danceStep 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+}
+
+.animate-bob {
+  animation: floatBob 2.5s ease-in-out infinite;
+}
+
+.animate-zzz {
+  animation: zzzFloat 2s ease-out infinite;
+}
+
+.animate-juice {
+  animation: juiceSip 1.2s ease-in-out infinite;
+}
+
+.animate-screen-shake {
+  animation: screenShake 0.35s ease-in-out;
 }

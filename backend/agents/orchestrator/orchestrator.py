@@ -269,6 +269,21 @@ class RemediationOrchestrator:
                 f"Generated unified diff and validated zero AST drift. Code is now verified secure."
             )
 
+            diff_items = []
+            for line in patch_diff.split("\n"):
+                if line.startswith("-") and not line.startswith("---"):
+                    diff_items.append({
+                        "type": "removed",
+                        "code": line[1:].strip(),
+                        "reason": "Vulnerable pattern detected by Auditor (e.g. potential injection or unsafe execution)"
+                    })
+                elif line.startswith("+") and not line.startswith("+++"):
+                    diff_items.append({
+                        "type": "added",
+                        "code": line[1:].strip(),
+                        "reason": "Surgically patched with parameterized or sanitized defensive invariant"
+                    })
+
             timeline.append({
                 "id": "patcher",
                 "agent": "The Patcher",
@@ -280,10 +295,12 @@ class RemediationOrchestrator:
                 "details": {
                     "diff": patch_diff,
                     "explanation": patch_explanation,
+                    "diff_items": diff_items,
                     "post_audit_secure": post_audit.is_secure
                 }
             })
         else:
+            diff_items = []
             patcher_thought = (
                 "Verified code conforms 100% to Architect security invariants. "
                 "Zero vulnerabilities found; zero patches required. Code is secure by design."
@@ -338,6 +355,7 @@ class RemediationOrchestrator:
             "final_code": final_code,
             "patch_diff": patch_diff,
             "patch_explanation": patch_explanation,
+            "diff_items": diff_items,
             "is_secure": True,
             "architect_spec": spec.model_dump(),
             "findings": [f.model_dump() for f in audit_result.findings],
