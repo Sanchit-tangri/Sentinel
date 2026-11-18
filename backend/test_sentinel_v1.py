@@ -397,6 +397,96 @@ def test_websocket_telemetry_and_vibe_interactive_mode():
     print("PASS: test_websocket_telemetry_and_vibe_interactive_mode")
 
 
+def test_dual_tier_sandbox_runner_and_polyglot_compiler():
+    from workspace.sandbox_runner import (
+        SandboxRunner,
+        SandboxTier,
+        TechStackKind,
+        SandboxExecutionStatus
+    )
+    from agents.orchestrator.event_bus import SessionEventBus
+
+    event_bus = SessionEventBus()
+    runner = SandboxRunner(event_bus=event_bus)
+
+    # 1. Test Stack Detection
+    mern_files = {
+        "package.json": '{"dependencies": {"express": "^4.18.2", "mongoose": "^8.0.0"}}',
+        "backend/routes/auth.js": "const express = require('express'); const router = express.Router(); router.post('/api/login', (req, res) => {});"
+    }
+    assert runner.detect_stack(mern_files) == TechStackKind.MERN
+
+    spring_files = {
+        "pom.xml": "<project><dependencies><dependency><groupId>org.springframework.boot</groupId></dependency></dependencies></project>",
+        "src/main/java/com/sentinel/UserController.java": "@RestController\npublic class UserController {\n  @GetMapping(\"/api/users\")\n  public List<User> getUsers() {}\n}"
+    }
+    assert runner.detect_stack(spring_files) == TechStackKind.SPRING_BOOT
+
+    android_files = {
+        "AndroidManifest.xml": '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application></application></manifest>',
+        "MainActivity.kt": "class MainActivity : ComponentActivity() {}"
+    }
+    assert runner.detect_stack(android_files) == TechStackKind.ANDROID
+
+    fastapi_files = {
+        "requirements.txt": "fastapi==0.110.0\nuvicorn==0.28.0",
+        "backend/app.py": "from fastapi import FastAPI\napp = FastAPI()\n@app.get('/api/items')\ndef get_items(): pass"
+    }
+    assert runner.detect_stack(fastapi_files) == TechStackKind.FASTAPI
+
+    # 2. Test Route & Schema Extraction
+    polyglot_repo = {
+        **mern_files,
+        **spring_files,
+        "database/schema.sql": "CREATE TABLE tasks (id INT PRIMARY KEY, title VARCHAR(255));",
+        "backend/models.py": "from pydantic import BaseModel\nclass Order(BaseModel):\n  id: int\n  amount: float"
+    }
+    routes = runner.extract_routes(polyglot_repo)
+    route_paths = [r.path for r in routes]
+    assert "/api/login" in route_paths
+    assert "/api/users" in route_paths
+
+    schemas = runner.extract_schemas(polyglot_repo)
+    schema_names = [s.name.lower() for s in schemas]
+    assert "tasks" in schema_names
+    assert "orders" in schema_names
+
+    # 3. Test Dual-Tier Execution and Tier 2 Zero-Cost Fallback
+    sid = "sess-test-sandbox"
+    result = runner.run_sandbox(
+        files=polyglot_repo,
+        project_name="Polyglot Enterprise Studio",
+        session_id=sid
+    )
+    assert result.session_id == sid
+    assert result.status in (SandboxExecutionStatus.READY, SandboxExecutionStatus.RUNNING)
+    assert result.localhost_url == "http://localhost:8000"
+    assert "sentinel-polyglot-mock-router" in result.sandbox_html
+    assert "window.__SENTINEL_DB__" in result.sandbox_html
+    assert "originalFetch" in result.sandbox_html
+
+    # 4. Test WebSocket SANDBOX_LOG Streaming
+    events = event_bus.event_history.get(sid, [])
+    sandbox_logs = [e for e in events if e.get("type") == "SANDBOX_LOG"]
+    assert len(sandbox_logs) >= 2
+    assert any("Detected stack" in log.get("message", "") for log in sandbox_logs)
+    assert any("Tier 2" in log.get("message", "") or "Tier 1" in log.get("message", "") for log in sandbox_logs)
+
+    # 5. Test ProjectManager Integration
+    from workspace.project_manager import ProjectManager
+    pm = ProjectManager(event_bus=event_bus)
+    workspace = pm.process_project(
+        files=fastapi_files,
+        project_name="FastAPI Test Project",
+        session_id="sess-pm-test"
+    )
+    assert workspace.sandbox_tier in ("tier_1_container", "tier_2_polyglot_compiler")
+    assert workspace.localhost_url == "http://localhost:8000"
+    assert "sentinel-polyglot-mock-router" in workspace.sandbox_html
+
+    print("PASS: test_dual_tier_sandbox_runner_and_polyglot_compiler")
+
+
 def run_all_v1_tests():
     print("=== Running Sentinel v1.0 Polyglot Studio Test Suite ===")
     test_polyglot_ast_javascript_typescript()
@@ -406,6 +496,7 @@ def run_all_v1_tests():
     test_polyglot_auditor_mern()
     test_polyglot_auditor_spring_boot_and_android()
     test_websocket_telemetry_and_vibe_interactive_mode()
+    test_dual_tier_sandbox_runner_and_polyglot_compiler()
     print("=== ALL SENTINEL v1.0 TESTS PASSED SUCCESSFULLY! ===")
 
 

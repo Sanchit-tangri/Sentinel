@@ -51,7 +51,8 @@ project_manager = ProjectManager(
     auditor=auditor,
     patcher=orchestrator.patcher,
     omniroute=omniroute_client,
-    memory_store=memory_store
+    memory_store=memory_store,
+    event_bus=event_bus
 )
 
 

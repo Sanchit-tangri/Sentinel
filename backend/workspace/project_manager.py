@@ -11,6 +11,12 @@ from agents.auditor.agent import AuditorAgent
 from agents.patcher.agent import PatcherAgent
 from rag.memory_store import MemoryStore
 from routing.omniroute_client import OmniRouteClient, ModelTier
+from workspace.sandbox_runner import SandboxRunner, SandboxResult, SandboxTier
+
+try:
+    from agents.orchestrator.event_bus import SessionEventBus
+except ImportError:
+    SessionEventBus = Any  # type: ignore
 
 
 IGNORE_DIRS = {
@@ -45,6 +51,9 @@ class ProjectWorkspace(BaseModel):
     remediated_count: int
     sandbox_html: str
     localhost_url: str = "http://localhost:8000"
+    sandbox_tier: str = "tier_2_polyglot_compiler"
+    sandbox_status: str = "ready"
+    sandbox_logs: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class ProjectManager:
@@ -55,7 +64,7 @@ class ProjectManager:
       - Whole-repository security audits across all application files.
       - Dynamic, prompt-driven multi-file fullstack synthesis (HTML + dynamic JavaScript + Python + SQL).
       - Surgical multi-file remediation.
-      - Localhost sandbox simulation.
+      - Localhost sandbox simulation via Dual-Tier SandboxRunner.
       - In-memory export of the remediated codebase as a clean downloadable ZIP.
     """
 
@@ -64,12 +73,16 @@ class ProjectManager:
         auditor: Optional[AuditorAgent] = None,
         patcher: Optional[PatcherAgent] = None,
         omniroute: Optional[OmniRouteClient] = None,
-        memory_store: Optional[MemoryStore] = None
+        memory_store: Optional[MemoryStore] = None,
+        event_bus: Optional[SessionEventBus] = None,
+        sandbox_runner: Optional[SandboxRunner] = None
     ):
         self.memory_store = memory_store or MemoryStore()
         self.omniroute = omniroute or OmniRouteClient()
         self.auditor = auditor or AuditorAgent()
         self.patcher = patcher or PatcherAgent(memory_store=self.memory_store, omniroute_client=self.omniroute)
+        self.event_bus = event_bus
+        self.sandbox_runner = sandbox_runner or SandboxRunner(event_bus=self.event_bus)
         self._workspace_cache: Dict[str, Dict[str, str]] = {}
 
     def extract_zip(self, zip_bytes: bytes) -> Dict[str, str]:
@@ -164,7 +177,11 @@ class ProjectManager:
             )
 
         self._workspace_cache[sid] = clean_file_cache
-        sandbox_html = self._synthesize_localhost_sandbox(clean_file_cache, project_name)
+        sandbox_res: SandboxResult = self.sandbox_runner.run(
+            files=clean_file_cache,
+            project_name=project_name,
+            session_id=sid
+        )
 
         return ProjectWorkspace(
             session_id=sid,
@@ -174,8 +191,11 @@ class ProjectManager:
             vulnerable_files_count=vuln_files,
             total_vulnerabilities=total_vulns,
             remediated_count=remediated,
-            sandbox_html=sandbox_html,
-            localhost_url="http://localhost:8000"
+            sandbox_html=sandbox_res.sandbox_html,
+            localhost_url=sandbox_res.localhost_url,
+            sandbox_tier=sandbox_res.tier.value,
+            sandbox_status=sandbox_res.status.value,
+            sandbox_logs=sandbox_res.logs
         )
 
     def generate_fullstack_scaffold(self, prompt: str) -> Dict[str, str]:
@@ -1007,48 +1027,12 @@ pydantic>=2.6.0
         """
         Creates an interactive Localhost Server + Client simulation inside the sandbox,
         embedding HTML and dynamic JavaScript so it is 100% interactive!
+        Delegates to SandboxRunner for polyglot route/mock execution.
         """
-        html_content = files.get("frontend/index.html")
-        js_content = files.get("frontend/app.js", "")
-
-        if html_content:
-            # Inline app.js inside the HTML so the sandbox iframe executes dynamic JavaScript
-            if js_content and '<script src="app.js"></script>' in html_content:
-                return html_content.replace(
-                    '<script src="app.js"></script>',
-                    f"<script>\n{js_content}\n</script>"
-                )
-            elif js_content and "</body>" in html_content:
-                return html_content.replace(
-                    "</body>",
-                    f"<script>\n{js_content}\n</script>\n</body>"
-                )
-            return html_content
-
-        # Fallback multi-file viewer if no HTML exists
-        file_list_html = "".join([f"<li class='flex justify-between py-1 border-b border-slate-800'><span>📄 {p}</span><span class='text-emerald-400'>SECURE</span></li>" for p in files.keys()])
-
-        return f"""<!DOCTYPE html>
-<html>
-<head><script src="https://cdn.tailwindcss.com"></script></head>
-<body class="bg-slate-950 text-slate-100 p-6 font-sans">
-  <div class="max-w-2xl mx-auto space-y-5">
-    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-      <div>
-        <h1 class="text-base font-bold text-white">{project_name}</h1>
-        <p class="text-xs text-slate-400">Localhost Server Simulation active on port 8000</p>
-      </div>
-      <span class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 text-xs font-mono">
-        HTTP 200 OK
-      </span>
-    </div>
-
-    <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
-      <h2 class="text-xs font-bold uppercase text-slate-400">Remediated Project Files ({len(files)} total)</h2>
-      <ul class="text-xs font-mono space-y-1 max-h-48 overflow-y-auto">
-        {file_list_html}
-      </ul>
-    </div>
-  </div>
-</body>
-</html>"""
+        stack = self.sandbox_runner.detect_stack(files)
+        return self.sandbox_runner.compile_tier_2_bundle(
+            files=files,
+            project_name=project_name,
+            session_id="local-preview",
+            stack=stack
+        )

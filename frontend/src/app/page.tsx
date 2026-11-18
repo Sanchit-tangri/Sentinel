@@ -566,6 +566,8 @@ export default function WhiteBoxVibeStudio() {
   const [activeCursor, setActiveCursor] = useState<AgentCursor | null>(null);
   const [telemetryLogs, setTelemetryLogs] = useState<AgentTelemetryEvent[]>([]);
   const [sessionId, setSessionId] = useState<string>("sess-studio-live");
+  const [sandboxHtml, setSandboxHtml] = useState<string>("");
+  const [localhostUrl, setLocalhostUrl] = useState<string>("http://localhost:8000");
   const [isWsConnected, setIsWsConnected] = useState<boolean>(false);
 
   useEffect(() => {
@@ -897,6 +899,8 @@ export default function WhiteBoxVibeStudio() {
         const workspace: WorkspaceData = await res.json();
         setFiles(workspace.files);
         setSessionId(workspace.session_id);
+        if (workspace.sandbox_html) setSandboxHtml(workspace.sandbox_html);
+        if (workspace.localhost_url) setLocalhostUrl(workspace.localhost_url);
         const firstKey = Object.keys(workspace.files)[0];
         if (firstKey) setSelectedFilePath(firstKey);
 
@@ -963,7 +967,8 @@ export default function WhiteBoxVibeStudio() {
 
         {/* Right Pane: Live Localhost Sandbox & Real-Time Terminal */}
         <RightPane
-          localhostUrl="http://localhost:8000"
+          sandboxHtml={sandboxHtml}
+          localhostUrl={localhostUrl}
           telemetryLogs={telemetryLogs}
           activeAgent={activeAgent}
           uiTheme={agentConfig.ui_theme_target}
