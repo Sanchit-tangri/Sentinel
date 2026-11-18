@@ -20,7 +20,8 @@ IGNORE_DIRS = {
 
 TEXT_EXTENSIONS = {
     ".py", ".js", ".ts", ".jsx", ".tsx", ".html", ".css", ".sql",
-    ".json", ".yaml", ".yml", ".md", ".txt", ".env", ".toml", ".sh"
+    ".json", ".yaml", ".yml", ".md", ".txt", ".env", ".toml", ".sh",
+    ".java", ".kt", ".kts", ".xml", ".properties"
 }
 
 

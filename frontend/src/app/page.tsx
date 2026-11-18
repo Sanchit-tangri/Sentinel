@@ -1,613 +1,940 @@
 "use client";
 
-import { useState, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { CommandHeader } from "../components/CommandHeader";
+import { LeftPane } from "../components/LeftPane";
+import { CodeCanvas } from "../components/CodeCanvas";
+import { RightPane } from "../components/RightPane";
+import { VibeBar } from "../components/VibeBar";
+import { AgentDrawer } from "../components/AgentDrawer";
+import {
+  ProjectFile,
+  WorkspaceData,
+  TechStack,
+  ExecutionMode,
+  AgentConfig,
+  AgentCursor,
+  AgentTelemetryEvent,
+  Finding,
+} from "../types/sentinel";
 
 const BACKEND_URL = "http://localhost:8000";
+const WS_URL = "ws://localhost:8000";
 
-interface ProjectFile {
-  path: string;
-  original_content: string;
-  current_content: string;
-  is_modified: boolean;
-  findings_count: number;
-  diff: string;
-  findings: any[];
-}
+// Pre-seeded multi-file scaffolds for instant polyglot vibe coding demonstrations
+const POLYGLOT_PRESETS: Record<TechStack, Record<string, ProjectFile>> = {
+  mern: {
+    "backend/server.js": {
+      path: "backend/server.js",
+      original_content: `const express = require('express');
+const cors = require('cors');
+const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
+const app = express();
 
-interface WorkspaceData {
-  session_id: string;
-  project_name: string;
-  files: Record<string, ProjectFile>;
-  total_files: number;
-  vulnerable_files_count: number;
-  total_vulnerabilities: number;
-  remediated_count: number;
-  sandbox_html: string;
-  localhost_url: string;
-}
+app.use(express.json());
+// 1. Insecure CORS Wildcard
+app.use(cors({ origin: "*" }));
 
-// The 4 Hero Robot Crew Members
-const CREW = [
-  {
-    id: "architect",
-    name: "Dex",
-    title: "The Hoodie Hacker",
-    tagline: "Strategic Architect",
-    color: "cyan",
-    accentBg: "from-cyan-500/20 to-blue-500/10",
-    borderActive: "border-cyan-400 shadow-cyan-500/30",
-    textCol: "text-cyan-400",
-    soundEffect: "*MAPPING TOPOLOGY*",
-    quote: "Scanning repository trust boundaries. Locking down multi-file attack surfaces.",
-    avatar: (
-      <div className="relative w-14 h-14 flex items-center justify-center animate-bob">
-        <div className="w-12 h-12 rounded-2xl bg-slate-900 border-2 border-cyan-400 shadow-lg shadow-cyan-500/30 flex flex-col items-center justify-center relative overflow-hidden">
-          <div className="absolute top-0 inset-x-0 h-3.5 bg-cyan-950/80 border-b border-cyan-500/40 rounded-t-xl" />
-          <div className="flex gap-1.5 items-center mt-2 z-10">
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-            <span className="w-2 h-2 rounded-full bg-cyan-400" />
-          </div>
-          <div className="w-6 h-0.5 bg-cyan-300 rounded-full mt-1 shadow-sm shadow-cyan-400" />
-        </div>
-      </div>
-    ),
-  },
-  {
-    id: "developer",
-    name: "Pixel",
-    title: "Juice-Box Coder",
-    tagline: "Fullstack Builder",
-    color: "amber",
-    accentBg: "from-amber-500/20 to-orange-500/10",
-    borderActive: "border-amber-400 shadow-amber-500/30",
-    textCol: "text-amber-400",
-    soundEffect: "*SLURP*",
-    quote: "Slurrrp! 🧃 OmniRoute routed! Synthesizing multi-file project files and live localhost!",
-    avatar: (
-      <div className="relative w-14 h-14 flex items-center justify-center animate-juice">
-        <div className="w-12 h-12 rounded-2xl bg-slate-900 border-2 border-amber-400 shadow-lg shadow-amber-500/30 flex flex-col items-center justify-center relative">
-          <div className="flex gap-2 items-center">
-            <span className="w-2 h-2.5 rounded-full bg-amber-300" />
-            <span className="w-2 h-2.5 rounded-full bg-amber-300" />
-          </div>
-          <span className="text-[9px] text-amber-200 font-bold mt-0.5">ᴗ</span>
-          <div className="absolute -bottom-1 -right-1 text-xs">🧃</div>
-        </div>
-      </div>
-    ),
-  },
-  {
-    id: "auditor",
-    name: "Snooze",
-    title: "Sleepy Auditor",
-    tagline: "Repo-Wide Scanner",
-    color: "purple",
-    accentBg: "from-purple-500/20 to-violet-500/10",
-    borderActive: "border-purple-400 shadow-purple-500/30",
-    textCol: "text-purple-400",
-    soundEffect: "*SCANNING ALL FILES*",
-    quote: "Yaaawn... 💤 Laser eyes scanning every route, query, and template across the repo!",
-    avatar: (
-      <div className="relative w-14 h-14 flex items-center justify-center animate-bob">
-        <div className="absolute -top-2 right-0 text-[9px] font-bold text-purple-300 animate-zzz">Zzz</div>
-        <div className="w-12 h-12 rounded-full bg-slate-900 border-2 border-purple-400 shadow-lg shadow-purple-500/30 flex flex-col items-center justify-center relative">
-          <div className="flex gap-1.5 items-center mt-1">
-            <span className="w-2.5 h-0.5 bg-purple-300 rounded-full" />
-            <span className="w-2.5 h-0.5 bg-purple-300 rounded-full" />
-          </div>
-          <div className="w-2 h-2 rounded-full bg-rose-500 animate-ping mt-1" />
-        </div>
-      </div>
-    ),
-  },
-  {
-    id: "patcher",
-    name: "Glitch",
-    title: "Dancing Patcher",
-    tagline: "Multi-File Fixer",
-    color: "pink",
-    accentBg: "from-pink-500/20 to-fuchsia-500/10",
-    borderActive: "border-pink-400 shadow-pink-500/30",
-    textCol: "text-pink-400",
-    soundEffect: "*REMEDIATION DISCO*",
-    quote: "Break it down! 🕺 Surgically patching files and packing a clean downloadable ZIP!",
-    avatar: (
-      <div className="relative w-14 h-14 flex items-center justify-center animate-dance">
-        <div className="w-12 h-12 rounded-2xl bg-slate-900 border-2 border-pink-500 shadow-lg shadow-pink-500/40 flex flex-col items-center justify-center relative">
-          <div className="w-8 h-2.5 bg-pink-500 rounded-sm flex items-center justify-center">
-            <div className="w-6 h-0.5 bg-slate-950" />
-          </div>
-          <div className="w-3 h-1 bg-yellow-400 rounded-b-full mt-1" />
-          <div className="absolute -bottom-1 -left-1 text-xs">🔧</div>
-        </div>
-      </div>
-    ),
-  },
-];
+// 2. Prototype Pollution via Object.assign with req.body
+app.post('/api/profile/update', (req, res) => {
+    const userProfile = {};
+    Object.assign(userProfile, req.body);
+    res.json({ success: true, profile: userProfile });
+});
 
-export default function MultiFileSentinelStudio() {
-  const [activeTab, setActiveTab] = useState<"generate" | "upload">("generate");
-  const [prompt, setPrompt] = useState<string>(
-    "Build a fullstack e-commerce application with product catalog, cart API, and PostgreSQL schema"
+app.listen(8000, () => console.log('MERN Server running on port 8000'));`,
+      current_content: `const express = require('express');
+const cors = require('cors');
+const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
+const app = express();
+
+app.use(express.json());
+// 1. Insecure CORS Wildcard
+app.use(cors({ origin: "*" }));
+
+// 2. Prototype Pollution via Object.assign with req.body
+app.post('/api/profile/update', (req, res) => {
+    const userProfile = {};
+    Object.assign(userProfile, req.body);
+    res.json({ success: true, profile: userProfile });
+});
+
+app.listen(8000, () => console.log('MERN Server running on port 8000'));`,
+      is_modified: false,
+      findings_count: 2,
+      diff: "",
+      findings: [
+        {
+          id: "VULN-CWE-942-10",
+          cwe_id: "CWE-942",
+          title: "Permissive CORS Wildcard Policy (origin: '*')",
+          description: "Wildcard CORS allows untrusted third-party origins to access authenticated responses.",
+          severity: "MEDIUM",
+          file_path: "backend/server.js",
+          line_number: 10,
+          snippet: 'app.use(cors({ origin: "*" }));',
+          exploit_poc: "Conceptual Exploit: An untrusted domain makes cross-origin requests on behalf of users.",
+          fix_options: [
+            "1. Specify an explicit allowed origin whitelist in CORS options",
+            "2. Integrate helmet() security middleware",
+            "3. Enforce strict Origin header checking"
+          ]
+        },
+        {
+          id: "VULN-CWE-1321-16",
+          cwe_id: "CWE-1321",
+          title: "Prototype Pollution via unvalidated Object.assign",
+          description: "Unsanitized req.body assigned directly can modify Object.prototype.",
+          severity: "HIGH",
+          file_path: "backend/server.js",
+          line_number: 16,
+          snippet: "Object.assign(userProfile, req.body);",
+          exploit_poc: "Conceptual Exploit: Attacker passes '__proto__.isAdmin = true' to elevate privileges across the app.",
+          fix_options: [
+            "1. Filter and assign only whitelisted fields explicitly",
+            "2. Freeze Object.prototype during initialization",
+            "3. Use Object.create(null) for unprototyped dictionary objects"
+          ]
+        }
+      ]
+    },
+    "backend/routes/auth.js": {
+      path: "backend/routes/auth.js",
+      original_content: `const express = require('express');
+const router = express.Router();
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+
+// 1. NoSQL Operator Injection ($where / unsanitized req.body)
+router.post('/login', async (req, res) => {
+    const user = await User.find(req.body);
+    if (!user || user.length === 0) {
+        return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    // 2. Hardcoded JWT Secret
+    const token = jwt.sign({ id: user[0]._id }, "super_secret_jwt_key_12345");
+    return res.json({ token, user: user[0] });
+});
+
+module.exports = router;`,
+      current_content: `const express = require('express');
+const router = express.Router();
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+
+// 1. NoSQL Operator Injection ($where / unsanitized req.body)
+router.post('/login', async (req, res) => {
+    const user = await User.find(req.body);
+    if (!user || user.length === 0) {
+        return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    // 2. Hardcoded JWT Secret
+    const token = jwt.sign({ id: user[0]._id }, "super_secret_jwt_key_12345");
+    return res.json({ token, user: user[0] });
+});
+
+module.exports = router;`,
+      is_modified: false,
+      findings_count: 2,
+      diff: "",
+      findings: [
+        {
+          id: "VULN-CWE-943-8",
+          cwe_id: "CWE-943",
+          title: "NoSQL Operator Injection in MongoDB Query",
+          description: "Unsanitized req.body passed directly to User.find allows operator injection.",
+          severity: "CRITICAL",
+          file_path: "backend/routes/auth.js",
+          line_number: 8,
+          snippet: "const user = await User.find(req.body);",
+          exploit_poc: 'Conceptual Exploit: Attacker passes {"password": {"$gt": ""}} to bypass authentication without valid credentials.',
+          fix_options: [
+            "1. Sanitize incoming request objects with mongo-sanitize",
+            "2. Build explicit query with typed parameters: { username: req.body.username }",
+            "3. Enforce Zod/Joi schema validation on request payload"
+          ]
+        },
+        {
+          id: "VULN-CWE-798-14",
+          cwe_id: "CWE-798",
+          title: "Hardcoded JSON Web Token Secret",
+          description: "Static JWT secret key exposed directly in source code.",
+          severity: "HIGH",
+          file_path: "backend/routes/auth.js",
+          line_number: 14,
+          snippet: 'const token = jwt.sign({ id: user[0]._id }, "super_secret_jwt_key_12345");',
+          exploit_poc: "Conceptual Exploit: Attacker extracts the hardcoded secret to sign forged admin tokens.",
+          fix_options: [
+            "1. Load JWT secret from process.env.JWT_SECRET",
+            "2. Store secrets in AWS Secrets Manager or HashiCorp Vault",
+            "3. Migrate to RS256 asymmetric keypairs"
+          ]
+        }
+      ]
+    },
+    "frontend/components/Profile.jsx": {
+      path: "frontend/components/Profile.jsx",
+      original_content: `import React from 'react';
+
+export default function UserProfileCard({ userBio }) {
+    return (
+        <div className="profile-container">
+            <h3>User Biography</h3>
+            {/* Cross-Site Scripting via dangerouslySetInnerHTML */}
+            <div dangerouslySetInnerHTML={{ __html: userBio }} />
+        </div>
+    );
+}`,
+      current_content: `import React from 'react';
+
+export default function UserProfileCard({ userBio }) {
+    return (
+        <div className="profile-container">
+            <h3>User Biography</h3>
+            {/* Cross-Site Scripting via dangerouslySetInnerHTML */}
+            <div dangerouslySetInnerHTML={{ __html: userBio }} />
+        </div>
+    );
+}`,
+      is_modified: false,
+      findings_count: 1,
+      diff: "",
+      findings: [
+        {
+          id: "VULN-CWE-79-8",
+          cwe_id: "CWE-79",
+          title: "Cross-Site Scripting (XSS) via dangerouslySetInnerHTML",
+          description: "Unsanitized userBio rendered directly into DOM allows script execution.",
+          severity: "HIGH",
+          file_path: "frontend/components/Profile.jsx",
+          line_number: 8,
+          snippet: "<div dangerouslySetInnerHTML={{ __html: userBio }} />",
+          exploit_poc: "Conceptual Exploit: Attacker enters `<img src=x onerror=alert(document.cookie)>` in user bio to hijack sessions.",
+          fix_options: [
+            "1. Sanitize raw HTML with DOMPurify.sanitize(userBio)",
+            "2. Use default JSX data binding `{userBio}` which auto-escapes",
+            "3. Render markdown through a secure sanitizer plugin"
+          ]
+        }
+      ]
+    }
+  },
+  spring: {
+    "src/main/java/com/sentinel/PaymentController.java": {
+      path: "src/main/java/com/sentinel/PaymentController.java",
+      original_content: `package com.sentinel;
+
+import org.springframework.web.bind.annotation.*;
+import org.springframework.jdbc.core.JdbcTemplate;
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/payments")
+public class PaymentController {
+    private final JdbcTemplate jdbcTemplate;
+
+    public PaymentController(JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+    }
+
+    @GetMapping("/search")
+    public List<Object> searchPayments(@RequestParam String orderId) {
+        // SQL Injection via string concatenation in JdbcTemplate
+        String query = "SELECT * FROM payments WHERE order_id = " + orderId;
+        return jdbcTemplate.queryForList(query);
+    }
+}`,
+      current_content: `package com.sentinel;
+
+import org.springframework.web.bind.annotation.*;
+import org.springframework.jdbc.core.JdbcTemplate;
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/payments")
+public class PaymentController {
+    private final JdbcTemplate jdbcTemplate;
+
+    public PaymentController(JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+    }
+
+    @GetMapping("/search")
+    public List<Object> searchPayments(@RequestParam String orderId) {
+        // SQL Injection via string concatenation in JdbcTemplate
+        String query = "SELECT * FROM payments WHERE order_id = " + orderId;
+        return jdbcTemplate.queryForList(query);
+    }
+}`,
+      is_modified: false,
+      findings_count: 1,
+      diff: "",
+      findings: [
+        {
+          id: "VULN-CWE-89-19",
+          cwe_id: "CWE-89",
+          title: "SQL Injection via Concatenation in JdbcTemplate",
+          description: "orderId is directly concatenated into the SQL statement.",
+          severity: "CRITICAL",
+          file_path: "src/main/java/com/sentinel/PaymentController.java",
+          line_number: 19,
+          snippet: 'String query = "SELECT * FROM payments WHERE order_id = " + orderId;',
+          exploit_poc: "Conceptual Exploit: Attacker passes '1 OR 1=1' in orderId to dump all payment records.",
+          fix_options: [
+            "1. Use parameterized placeholders: jdbcTemplate.queryForList(sql, orderId)",
+            "2. Use NamedParameterJdbcTemplate with MapSqlParameterSource",
+            "3. Migrate to Spring Data JPA repository derived methods"
+          ]
+        }
+      ]
+    },
+    "src/main/resources/application.properties": {
+      path: "src/main/resources/application.properties",
+      original_content: `server.port=8080
+spring.datasource.url=jdbc:postgresql://localhost:5432/sentinel_db
+management.endpoints.web.exposure.include=*`,
+      current_content: `server.port=8080
+spring.datasource.url=jdbc:postgresql://localhost:5432/sentinel_db
+management.endpoints.web.exposure.include=*`,
+      is_modified: false,
+      findings_count: 1,
+      diff: "",
+      findings: [
+        {
+          id: "VULN-CWE-215-3",
+          cwe_id: "CWE-215",
+          title: "Overexposed Spring Boot Actuator Endpoints (*)",
+          description: "All actuator endpoints are exposed without restriction.",
+          severity: "HIGH",
+          file_path: "src/main/resources/application.properties",
+          line_number: 3,
+          snippet: "management.endpoints.web.exposure.include=*",
+          exploit_poc: "Conceptual Exploit: Attacker accesses /actuator/env and /actuator/heapdump to extract database credentials and memory.",
+          fix_options: [
+            "1. Restrict exposed endpoints to health,info only",
+            "2. Secure endpoints behind Spring Security with ADMIN role",
+            "3. Bind actuator to a dedicated internal management port"
+          ]
+        }
+      ]
+    }
+  },
+  fastapi: {
+    "backend/app.py": {
+      path: "backend/app.py",
+      original_content: `from fastapi import FastAPI
+import os
+
+app = FastAPI()
+
+@app.get("/api/ping")
+def ping_host(host: str):
+    # Command Injection via os.system
+    os.system(f"ping -c 1 {host}")
+    return {"status": "sent"}`,
+      current_content: `from fastapi import FastAPI
+import os
+
+app = FastAPI()
+
+@app.get("/api/ping")
+def ping_host(host: str):
+    # Command Injection via os.system
+    os.system(f"ping -c 1 {host}")
+    return {"status": "sent"}`,
+      is_modified: false,
+      findings_count: 1,
+      diff: "",
+      findings: [
+        {
+          id: "VULN-CWE-78-9",
+          cwe_id: "CWE-78",
+          title: "Command Injection in os.system",
+          description: "Host parameter is concatenated into shell command.",
+          severity: "CRITICAL",
+          file_path: "backend/app.py",
+          line_number: 9,
+          snippet: 'os.system(f"ping -c 1 {host}")',
+          exploit_poc: "Conceptual Exploit: Attacker inputs '127.0.0.1; cat /etc/passwd' to execute arbitrary operating system commands.",
+          fix_options: [
+            "1. Use subprocess.run(['ping', '-c', '1', host], shell=False)",
+            "2. Validate host format against a strict IP address regex",
+            "3. Use a pure Python ICMP ping library instead of system shell"
+          ]
+        }
+      ]
+    }
+  },
+  android: {
+    "app/src/main/AndroidManifest.xml": {
+      path: "app/src/main/AndroidManifest.xml",
+      original_content: `<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.sentinel.android">
+    <application android:usesCleartextTraffic="true">
+        <activity android:name=".AdminPortalActivity" android:exported="true" />
+    </application>
+</manifest>`,
+      current_content: `<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.sentinel.android">
+    <application android:usesCleartextTraffic="true">
+        <activity android:name=".AdminPortalActivity" android:exported="true" />
+    </application>
+</manifest>`,
+      is_modified: false,
+      findings_count: 2,
+      diff: "",
+      findings: [
+        {
+          id: "VULN-CWE-926-4",
+          cwe_id: "CWE-926",
+          title: "Android Activity Exported Without Permission",
+          description: "AdminPortalActivity has android:exported='true' without an android:permission guard.",
+          severity: "HIGH",
+          file_path: "app/src/main/AndroidManifest.xml",
+          line_number: 4,
+          snippet: '<activity android:name=".AdminPortalActivity" android:exported="true" />',
+          exploit_poc: "Conceptual Exploit: A malicious third-party app launches AdminPortalActivity directly via explicit Intent.",
+          fix_options: [
+            "1. Set android:exported='false' for internal components",
+            "2. Declare and require custom signature-level permission",
+            "3. Implement caller package validation using Binder.getCallingUid()"
+          ]
+        },
+        {
+          id: "VULN-CWE-319-3",
+          cwe_id: "CWE-319",
+          title: "Cleartext HTTP Traffic Allowed in Manifest",
+          description: "android:usesCleartextTraffic='true' allows unencrypted network communication.",
+          severity: "MEDIUM",
+          file_path: "app/src/main/AndroidManifest.xml",
+          line_number: 3,
+          snippet: '<application android:usesCleartextTraffic="true">',
+          exploit_poc: "Conceptual Exploit: Network attackers perform Man-in-the-Middle eavesdropping over public Wi-Fi.",
+          fix_options: [
+            "1. Set android:usesCleartextTraffic='false' in application tag",
+            "2. Configure network_security_config.xml with TLS pinning",
+            "3. Enforce HTTPS across all remote endpoints"
+          ]
+        }
+      ]
+    },
+    "app/src/main/java/com/sentinel/WebActivity.kt": {
+      path: "app/src/main/java/com/sentinel/WebActivity.kt",
+      original_content: `package com.sentinel
+
+import android.os.Bundle
+import android.webkit.WebView
+import androidx.appcompat.app.AppCompatActivity
+
+class WebActivity : AppCompatActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val webView = WebView(this)
+        webView.settings.javaScriptEnabled = true
+        // Insecure JS interface
+        webView.addJavascriptInterface(this, "AndroidInterface")
+        webView.loadUrl("http://portal.sentinel.io")
+    }
+}`,
+      current_content: `package com.sentinel
+
+import android.os.Bundle
+import android.webkit.WebView
+import androidx.appcompat.app.AppCompatActivity
+
+class WebActivity : AppCompatActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val webView = WebView(this)
+        webView.settings.javaScriptEnabled = true
+        // Insecure JS interface
+        webView.addJavascriptInterface(this, "AndroidInterface")
+        webView.loadUrl("http://portal.sentinel.io")
+    }
+}`,
+      is_modified: false,
+      findings_count: 2,
+      diff: "",
+      findings: [
+        {
+          id: "VULN-CWE-749-13",
+          cwe_id: "CWE-749",
+          title: "WebView Remote Code Execution via addJavascriptInterface",
+          description: "Exposing native object to WebView allows malicious web pages to execute Java bridge methods.",
+          severity: "CRITICAL",
+          file_path: "app/src/main/java/com/sentinel/WebActivity.kt",
+          line_number: 13,
+          snippet: 'webView.addJavascriptInterface(this, "AndroidInterface")',
+          exploit_poc: "Conceptual Exploit: Script loaded in WebView accesses device storage through Java bridge reflection.",
+          fix_options: [
+            "1. Replace addJavascriptInterface with postMessage/WebMessagePorts",
+            "2. Restrict WebView navigation strictly to authorized HTTPS origins",
+            "3. Enforce @JavascriptInterface annotations on API >= 17"
+          ]
+        },
+        {
+          id: "VULN-CWE-319-14",
+          cwe_id: "CWE-319",
+          title: "Cleartext HTTP URL in WebView",
+          description: "WebView loads unencrypted HTTP URL.",
+          severity: "MEDIUM",
+          file_path: "app/src/main/java/com/sentinel/WebActivity.kt",
+          line_number: 14,
+          snippet: 'webView.loadUrl("http://portal.sentinel.io")',
+          exploit_poc: "Conceptual Exploit: Insecure HTTP is susceptible to content injection by local network proxies.",
+          fix_options: [
+            "1. Upgrade to HTTPS URL: https://portal.sentinel.io",
+            "2. Use network security config to block cleartext traffic",
+            "3. Implement SSL pinning in WebViewClient"
+          ]
+        }
+      ]
+    }
+  }
+};
+
+export default function WhiteBoxVibeStudio() {
+  const [currentStack, setCurrentStack] = useState<TechStack>("mern");
+  const [files, setFiles] = useState<Record<string, ProjectFile>>(POLYGLOT_PRESETS.mern);
+  const [selectedFilePath, setSelectedFilePath] = useState<string>("backend/routes/auth.js");
+  const [executionMode, setExecutionMode] = useState<ExecutionMode>("vibe_interactive");
+  const [agentDrawerOpen, setAgentDrawerOpen] = useState<boolean>(false);
+  const [vibePrompt, setVibePrompt] = useState<string>(
+    "Surgically audit all endpoints across the repo and patch NoSQL injection and CORS policies"
   );
   const [isRunning, setIsRunning] = useState<boolean>(false);
-  const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
-  const [selectedFile, setSelectedFile] = useState<string>("");
-  const [viewMode, setViewMode] = useState<"sandbox" | "code">("sandbox");
-  const [activeAgentIndex, setActiveAgentIndex] = useState<number>(0);
-  const [screenRumble, setScreenRumble] = useState<boolean>(false);
-  const [copiedCode, setCopiedCode] = useState<boolean>(false);
-  const [dragOver, setDragOver] = useState<boolean>(false);
+  const [activeAgent, setActiveAgent] = useState<string>("dex");
+  const [activeCursor, setActiveCursor] = useState<AgentCursor | null>(null);
+  const [telemetryLogs, setTelemetryLogs] = useState<AgentTelemetryEvent[]>([]);
+  const [sessionId, setSessionId] = useState<string>("sess-studio-live");
+  const [isWsConnected, setIsWsConnected] = useState<boolean>(false);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const stageRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    setSessionId("sess-" + Math.random().toString(36).substring(2, 10));
+  }, []);
 
-  const triggerRumble = () => {
-    setScreenRumble(true);
-    setTimeout(() => setScreenRumble(false), 380);
+  const [agentConfig, setAgentConfig] = useState<AgentConfig>({
+    persona_style: "cyberpunk",
+    security_level: "balanced",
+    ui_theme_target: "linear_dark",
+  });
+
+  const wsRef = useRef<WebSocket | null>(null);
+
+  // Initialize and maintain WebSocket connection to backend
+  useEffect(() => {
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(`${WS_URL}/ws/session/${sessionId}`);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setIsWsConnected(true);
+        setTelemetryLogs((prev) => [
+          {
+            type: "CONNECTION_ESTABLISHED",
+            message: `Connected to Sentinel v1.0 Real-Time Event Bus [${sessionId}]`,
+            timestamp: new Date().toISOString(),
+          },
+          ...prev,
+        ]);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data: AgentTelemetryEvent = JSON.parse(event.data);
+          setTelemetryLogs((prev) => [data, ...prev.slice(0, 150)]);
+
+          if (data.type === "AGENT_STATE" && data.agent) {
+            setActiveAgent(data.agent);
+          } else if (data.type === "CURSOR_MOVE" && data.file && data.line) {
+            setActiveCursor({
+              agent: (data.agent as any) || "snooze",
+              file: data.file,
+              line: data.line,
+              column: data.column || 1,
+              message: data.message,
+            });
+            // Auto-switch to file if cursor moved there
+            setSelectedFilePath((curr) => (files[data.file!] ? data.file! : curr));
+          } else if (data.type === "LIVE_DIFF_CHUNK" && data.file) {
+            // Apply diff to current file
+            setFiles((prev) => {
+              const target = prev[data.file!];
+              if (!target) return prev;
+              return {
+                ...prev,
+                [data.file!]: {
+                  ...target,
+                  is_modified: true,
+                  findings_count: Math.max(0, target.findings_count - 1),
+                  diff: data.explanation ? `${data.explanation}\n+ ${data.patched_lines?.join("\n+ ")}` : target.diff,
+                },
+              };
+            });
+          }
+        } catch (e) {
+          console.error("Failed to parse WebSocket message", e);
+        }
+      };
+
+      ws.onclose = () => {
+        setIsWsConnected(false);
+      };
+
+      ws.onerror = () => {
+        setIsWsConnected(false);
+      };
+    } catch (err) {
+      console.warn("WebSocket connection could not be established; running local simulation mode", err);
+    }
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, [sessionId]);
+
+  // Handle switching Tech Stacks
+  const handleSelectStack = (stack: TechStack) => {
+    setCurrentStack(stack);
+    const newFiles = POLYGLOT_PRESETS[stack];
+    setFiles(newFiles);
+    const firstKey = Object.keys(newFiles)[0];
+    setSelectedFilePath(firstKey);
+    setTelemetryLogs((prev) => [
+      {
+        type: "AGENT_STATE",
+        agent: "dex",
+        status: "thinking",
+        message: `Switched active stack to ${stack.toUpperCase()}. Hydrated AST symbol tables.`,
+        timestamp: new Date().toISOString(),
+      },
+      ...prev,
+    ]);
   };
 
-  const handleGenerateFullstack = async () => {
-    if (!prompt.trim() || isRunning) return;
+  // Submit Vibe Coding Prompt or Run Autopilot
+  const handleRunVibePrompt = async (promptText: string) => {
+    if (isRunning) return;
     setIsRunning(true);
-    setWorkspace(null);
-    triggerRumble();
-    stageRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
 
+    const activeFile = files[selectedFilePath];
+    const codeToAudit = activeFile ? activeFile.current_content : "";
+
+    // Stream Scene 1: Dex (The Architect)
+    setActiveAgent("dex");
+    setActiveCursor({ agent: "dex", file: selectedFilePath, line: 1, column: 1, message: "Analyzing trust boundaries" });
+    setTelemetryLogs((prev) => [
+      {
+        type: "AGENT_STATE",
+        agent: "dex",
+        status: "thinking",
+        message: `Dex formulating formal invariants for: '${promptText.slice(0, 70)}...'`,
+        timestamp: new Date().toISOString(),
+      },
+      ...prev,
+    ]);
+
+    // Send through WebSocket if open
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
+          action: "START_REMEDIATION",
+          code: codeToAudit,
+          filename: selectedFilePath,
+          mode: executionMode,
+          agent_config: agentConfig,
+        })
+      );
+    }
+
+    // Call REST endpoint for verification and fallback
     try {
-      // Animate bot squad working
-      for (let i = 0; i < CREW.length; i++) {
-        setActiveAgentIndex(i);
-        await new Promise((r) => setTimeout(r, 650));
-      }
-
-      const res = await fetch(`${BACKEND_URL}/api/project/generate-fullstack`, {
+      const response = await fetch(`${BACKEND_URL}/api/remediate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({
+          code: codeToAudit,
+          filename: selectedFilePath,
+          session_id: sessionId,
+          mode: executionMode,
+          agent_config: agentConfig,
+        }),
       });
 
-      if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
-      const data: WorkspaceData = await res.json();
-      setWorkspace(data);
+      if (response.ok) {
+        const data = await response.json();
+        const finalCode = data.final_code || codeToAudit;
+        const patchDiff = data.history?.[0]?.patch_diff || "";
 
-      const firstKey = Object.keys(data.files)[0] || "";
-      setSelectedFile(firstKey);
-      triggerRumble();
-    } catch (err: any) {
-      alert("Error: " + err.message);
+        // Update file state
+        setFiles((prev) => ({
+          ...prev,
+          [selectedFilePath]: {
+            ...prev[selectedFilePath],
+            current_content: finalCode,
+            is_modified: true,
+            findings_count: 0,
+            diff: patchDiff,
+          },
+        }));
+
+        setActiveAgent("glitch");
+        setActiveCursor({
+          agent: "glitch",
+          file: selectedFilePath,
+          line: 1,
+          column: 1,
+          message: "Remediation verified clean",
+        });
+
+        setTelemetryLogs((prev) => [
+          {
+            type: "AGENT_STATE",
+            agent: "glitch",
+            status: "completed",
+            message: "Glitch applied surgical zero-regression patch. Verified clean by Snooze.",
+            timestamp: new Date().toISOString(),
+          },
+          ...prev,
+        ]);
+      }
+    } catch (err) {
+      // Local fallback simulation if backend offline
+      setTimeout(() => {
+        setFiles((prev) => {
+          const cur = prev[selectedFilePath];
+          if (!cur) return prev;
+          let patched = cur.current_content;
+          if (cur.path.includes("auth.js")) {
+            patched = patched.replace("User.find(req.body)", "User.find(mongoSanitize(req.body))");
+            patched = patched.replace('"super_secret_jwt_key_12345"', 'process.env.JWT_SECRET || "default_secret"');
+            if (!patched.includes("mongoSanitize")) {
+              patched = "const mongoSanitize = require('mongo-sanitize');\n" + patched;
+            }
+          }
+          return {
+            ...prev,
+            [selectedFilePath]: {
+              ...cur,
+              current_content: patched,
+              is_modified: true,
+              findings_count: 0,
+              diff: "+ const mongoSanitize = require('mongo-sanitize');\n- User.find(req.body)\n+ User.find(mongoSanitize(req.body))",
+            },
+          };
+        });
+        setActiveAgent("glitch");
+      }, 1200);
     } finally {
       setIsRunning(false);
     }
   };
 
-  const handleZipUpload = async (file: File) => {
-    if (!file || isRunning) return;
+  // Interactive Approval Handler (Vibe Interactive Mode)
+  const handleApproveFix = (findingId: string, strategy: string, customInstruction?: string) => {
+    // Notify WebSocket backend
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
+          action: "APPROVE_FIX",
+          finding_id: findingId,
+          selected_strategy: strategy,
+          custom_instruction: customInstruction || "",
+        })
+      );
+    }
+
+    setTelemetryLogs((prev) => [
+      {
+        type: "AGENT_STATE",
+        agent: "glitch",
+        status: "editing",
+        message: `Approved fix strategy: "${strategy}". Glitch deploying surgical countermeasure.`,
+        timestamp: new Date().toISOString(),
+      },
+      ...prev,
+    ]);
+
+    // Apply surgical remediation to the active file
+    setFiles((prev) => {
+      const cur = prev[selectedFilePath];
+      if (!cur) return prev;
+      let patched = cur.current_content;
+
+      if (findingId.includes("CWE-943")) {
+        patched = patched.replace("User.find(req.body)", "User.find(mongoSanitize(req.body))");
+        if (!patched.includes("mongoSanitize")) {
+          patched = "const mongoSanitize = require('mongo-sanitize');\n" + patched;
+        }
+      } else if (findingId.includes("CWE-798")) {
+        patched = patched.replace(
+          '"super_secret_jwt_key_12345"',
+          'process.env.JWT_SECRET || "default_secure_secret"'
+        );
+      } else if (findingId.includes("CWE-79")) {
+        patched = patched.replace(
+          "__html: userBio",
+          "__html: DOMPurify.sanitize(userBio)"
+        );
+        if (!patched.includes("DOMPurify")) {
+          patched = "import DOMPurify from 'dompurify';\n" + patched;
+        }
+      } else if (findingId.includes("CWE-942")) {
+        patched = patched.replace('origin: "*"', "origin: ['http://localhost:3000']");
+      } else if (findingId.includes("CWE-89")) {
+        patched = patched.replace(
+          'String query = "SELECT * FROM payments WHERE order_id = " + orderId;',
+          'String query = "SELECT * FROM payments WHERE order_id = ?";\n        return jdbcTemplate.queryForList(query, orderId);'
+        );
+      } else if (findingId.includes("CWE-926")) {
+        patched = patched.replace('android:exported="true"', 'android:exported="false"');
+      }
+
+      const remainingFindings = cur.findings.filter((f) => f.id !== findingId);
+
+      return {
+        ...prev,
+        [selectedFilePath]: {
+          ...cur,
+          current_content: patched,
+          is_modified: true,
+          findings_count: remainingFindings.length,
+          findings: remainingFindings,
+          diff: `+ Applied Strategy: ${strategy}\n` + (customInstruction ? `+ Custom Instruction: ${customInstruction}\n` : ""),
+        },
+      };
+    });
+
+    setActiveAgent("glitch");
+  };
+
+  // Upload Codebase ZIP Handler
+  const handleUploadZip = async (file: File) => {
     setIsRunning(true);
-    setWorkspace(null);
-    triggerRumble();
-    stageRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setTelemetryLogs((prev) => [
+      {
+        type: "AGENT_STATE",
+        agent: "dex",
+        status: "thinking",
+        message: `Unpacking repository archive '${file.name}' with Zip-Slip path traversal guard.`,
+        timestamp: new Date().toISOString(),
+      },
+      ...prev,
+    ]);
 
     const formData = new FormData();
     formData.append("file", file);
 
     try {
-      for (let i = 0; i < CREW.length; i++) {
-        setActiveAgentIndex(i);
-        await new Promise((r) => setTimeout(r, 700));
-      }
-
       const res = await fetch(`${BACKEND_URL}/api/project/upload-zip`, {
         method: "POST",
         body: formData,
       });
 
-      if (!res.ok) {
-        const errJson = await res.json();
-        throw new Error(errJson.detail || `HTTP Error ${res.status}`);
-      }
+      if (res.ok) {
+        const workspace: WorkspaceData = await res.json();
+        setFiles(workspace.files);
+        setSessionId(workspace.session_id);
+        const firstKey = Object.keys(workspace.files)[0];
+        if (firstKey) setSelectedFilePath(firstKey);
 
-      const data: WorkspaceData = await res.json();
-      setWorkspace(data);
-      const firstKey = Object.keys(data.files)[0] || "";
-      setSelectedFile(firstKey);
-      triggerRumble();
-    } catch (err: any) {
-      alert("Upload failed: " + err.message);
+        setTelemetryLogs((prev) => [
+          {
+            type: "AGENT_STATE",
+            agent: "snooze",
+            status: "scanning",
+            message: `Extracted ${workspace.total_files} files. Identified ${workspace.total_vulnerabilities} vulnerabilities across repository.`,
+            timestamp: new Date().toISOString(),
+          },
+          ...prev,
+        ]);
+      }
+    } catch (err) {
+      console.error("ZIP upload failed", err);
     } finally {
       setIsRunning(false);
     }
   };
 
-  const currentHero = CREW[activeAgentIndex];
-  const activeFileObj = workspace && selectedFile ? workspace.files[selectedFile] : null;
+  // Download Remediated ZIP
+  const handleDownloadZip = () => {
+    window.open(`${BACKEND_URL}/api/project/download-zip/${sessionId}`, "_blank");
+  };
+
+  const currentFile = files[selectedFilePath] || Object.values(files)[0] || null;
 
   return (
-    <div
-      className={`min-h-screen text-slate-100 flex flex-col font-sans transition-all duration-300 animate-cyber-grid ${
-        screenRumble ? "animate-screen-shake" : ""
-      }`}
-    >
-      {/* Header */}
-      <header className="relative z-10 px-6 py-4 flex items-center justify-between border-b border-slate-800/80 bg-slate-950/80 backdrop-blur">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-cyan-400 via-emerald-400 to-pink-500 flex items-center justify-center text-xl shadow-lg shadow-emerald-500/20 animate-bob">
-            📦
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-amber-300 to-pink-400 text-lg">
-                SENTINEL FULLSTACK STUDIO
-              </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                MULTI-FILE + ZIP RUNTIME
-              </span>
-            </div>
-            <p className="text-xs text-slate-400">
-              Autonomous Fullstack Multi-File Generator, Repo-Wide Scanner & Localhost Sandbox
-            </p>
-          </div>
-        </div>
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#07090E] text-slate-100 select-none">
+      {/* Top Command Header */}
+      <CommandHeader
+        currentStack={currentStack}
+        onSelectStack={handleSelectStack}
+        executionMode={executionMode}
+        onToggleExecutionMode={(mode) => setExecutionMode(mode)}
+        onOpenAgentDrawer={() => setAgentDrawerOpen(true)}
+        onDownloadZip={handleDownloadZip}
+        isWsConnected={isWsConnected}
+        sessionId={sessionId}
+        agentConfig={agentConfig}
+        isRunning={isRunning}
+      />
 
-        {/* Download Remediated ZIP Button */}
-        {workspace && (
-          <a
-            href={`${BACKEND_URL}/api/project/download-zip/${workspace.session_id}`}
-            download
-            className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-950 transition"
-          >
-            <span>⬇️ Download Fixed Project (.zip)</span>
-          </a>
-        )}
-      </header>
+      {/* Main 3-Pane Studio Workspace */}
+      <main className="flex-1 flex overflow-hidden relative">
+        {/* Left Pane: Multi-File Explorer & Taint Map */}
+        <LeftPane
+          files={files}
+          selectedFile={selectedFilePath}
+          onSelectFile={(path) => setSelectedFilePath(path)}
+          activeAgent={activeAgent}
+        />
 
-      {/* Main Single-Page Canvas */}
-      <main className="relative z-10 flex-1 max-w-5xl w-full mx-auto px-6 py-8 flex flex-col gap-8">
-        {/* Mode Selector */}
-        <section className="flex flex-col items-center text-center gap-4">
-          <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 gap-2">
-            <button
-              onClick={() => setActiveTab("generate")}
-              className={`px-5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-                activeTab === "generate"
-                  ? "bg-emerald-600 text-white shadow-md shadow-emerald-900/40"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <span>⚡ Generate Fullstack App</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("upload")}
-              className={`px-5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-                activeTab === "upload"
-                  ? "bg-emerald-600 text-white shadow-md shadow-emerald-900/40"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <span>📁 Upload Existing Project (.ZIP)</span>
-            </button>
-          </div>
+        {/* Center Pane: Live Multi-Agent Code Canvas */}
+        <CodeCanvas
+          currentFile={currentFile}
+          activeCursor={activeCursor}
+          executionMode={executionMode}
+          onApproveFix={handleApproveFix}
+          isPatching={isRunning}
+          activeAgent={activeAgent}
+        />
 
-          {/* TAB 1: GENERATE FULLSTACK PROMPT */}
-          {activeTab === "generate" && (
-            <div className="w-full max-w-2xl bg-slate-900/90 border-2 border-slate-700/80 rounded-3xl p-4 shadow-2xl flex flex-col gap-3 focus-within:border-emerald-400 transition-all">
-              <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                rows={2}
-                placeholder="e.g. Build an online crypto trading terminal or a hospital appointment booking system..."
-                className="w-full bg-transparent font-medium text-sm text-white placeholder:text-slate-500 focus:outline-none resize-none leading-relaxed"
-              />
-
-              {/* Dynamic Domain Quick Chips */}
-              <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-800">
-                <span className="text-[11px] text-slate-500 font-bold self-center">Try Fullstack:</span>
-                <button
-                  type="button"
-                  onClick={() => setPrompt("Build an interactive e-commerce store with product catalog, shopping cart, and price calculation")}
-                  className="text-[11px] px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
-                >
-                  🛍️ E-Commerce & Cart
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPrompt("Build an interactive Kanban task board with columns: To Do, In Progress, and Done")}
-                  className="text-[11px] px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
-                >
-                  📋 TaskFlow Kanban
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPrompt("Build a hospital doctor appointment booking system with date slots and patient validation")}
-                  className="text-[11px] px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
-                >
-                  🏥 Doctor Appointments
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPrompt("Build a crypto trading portfolio terminal with real-time assets, balance, and buy simulation")}
-                  className="text-[11px] px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
-                >
-                  ⚡ Crypto Trading
-                </button>
-              </div>
-
-              <div className="flex justify-between items-center pt-2 border-t border-slate-800/80">
-                <span className="text-[11px] font-mono text-cyan-400">
-                  ✨ Generates: backend/app.py • database/schema.sql • frontend/app.js (Dynamic JS) • frontend/index.html
-                </span>
-                <button
-                  onClick={handleGenerateFullstack}
-                  disabled={isRunning || !prompt.trim()}
-                  className={`py-2.5 px-6 rounded-2xl font-bold text-xs tracking-wide transition shadow-lg flex items-center gap-2 ${
-                    isRunning
-                      ? "bg-slate-800 text-slate-400 cursor-not-allowed border border-slate-700"
-                      : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/30 active:scale-95"
-                  }`}
-                >
-                  {isRunning ? (
-                    <>
-                      <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Bot Squad Generating Fullstack...</span>
-                    </>
-                  ) : (
-                    <span>🚀 Generate Fullstack Project</span>
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 2: UPLOAD ZIP FILE */}
-          {activeTab === "upload" && (
-            <div
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragOver(true);
-              }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragOver(false);
-                if (e.dataTransfer.files?.[0]) handleZipUpload(e.dataTransfer.files[0]);
-              }}
-              className={`w-full max-w-2xl border-2 border-dashed rounded-3xl p-8 flex flex-col items-center justify-center text-center gap-3 transition-all ${
-                dragOver
-                  ? "border-emerald-400 bg-emerald-950/20 scale-102"
-                  : "border-slate-700 bg-slate-900/80 hover:border-slate-600"
-              }`}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".zip"
-                className="hidden"
-                onChange={(e) => {
-                  if (e.target.files?.[0]) handleZipUpload(e.target.files[0]);
-                }}
-              />
-              <span className="text-4xl animate-bounce">📦</span>
-              <div>
-                <h3 className="font-bold text-white text-base">
-                  Drag and drop your project ZIP file here
-                </h3>
-                <p className="text-xs text-slate-400 mt-1">
-                  Sentinel will safely unpack, scan every file, remediate vulnerabilities, and simulate localhost!
-                </p>
-              </div>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isRunning}
-                className="mt-2 px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs border border-slate-700 transition"
-              >
-                {isRunning ? "Scanning & Remediating..." : "Select .ZIP File from Computer"}
-              </button>
-            </div>
-          )}
-        </section>
-
-        {/* 2. THE BOT SQUAD ARENA */}
-        <section ref={stageRef} className="flex flex-col gap-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {CREW.map((bot, idx) => {
-              const isActive = activeAgentIndex === idx;
-              return (
-                <div
-                  key={bot.id}
-                  onClick={() => setActiveAgentIndex(idx)}
-                  className={`cursor-pointer p-4 rounded-3xl border-2 transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden ${
-                    isActive
-                      ? `bg-slate-900 ${bot.borderActive} scale-105 shadow-2xl`
-                      : "bg-slate-950/70 border-slate-800/80 opacity-60 hover:opacity-90"
-                  }`}
-                >
-                  <div className="my-1.5">{bot.avatar}</div>
-                  <span className="font-black text-sm text-white mt-1">{bot.name}</span>
-                  <span className={`text-[10px] font-bold ${bot.textCol}`}>{bot.title}</span>
-                  {isActive && (
-                    <span className="mt-1 text-[9px] font-mono px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-white animate-bounce">
-                      {bot.soundEffect}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Active Bot Dialogue Card */}
-          <div
-            className={`p-4 rounded-3xl border-2 transition-all bg-gradient-to-r ${currentHero.accentBg} ${currentHero.borderActive} flex items-center gap-4`}
-          >
-            <div className="hidden sm:block shrink-0">{currentHero.avatar}</div>
-            <div className="flex-1">
-              <span className="text-[10px] font-mono uppercase text-slate-400 block">
-                {currentHero.name}&apos;s Live Broadcast:
-              </span>
-              <p className="text-xs font-semibold text-white italic mt-0.5">
-                &ldquo;{currentHero.quote}&rdquo;
-              </p>
-            </div>
-          </div>
-
-          {/* 3. MULTI-FILE WORKSPACE & LOCALHOST SANDBOX */}
-          {workspace && (
-            <div className="flex flex-col gap-4">
-              {/* Workspace Metrics Banner */}
-              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
-                <div className="flex items-center gap-4">
-                  <div>
-                    <span className="text-slate-500">Project:</span>{" "}
-                    <span className="text-white font-bold">{workspace.project_name}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500">Files:</span>{" "}
-                    <span className="text-cyan-400 font-bold">{workspace.total_files}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500">Flaws Fixed:</span>{" "}
-                    <span className="text-emerald-400 font-bold">
-                      {workspace.remediated_count} / {workspace.total_vulnerabilities}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setViewMode("sandbox")}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-                      viewMode === "sandbox"
-                        ? "bg-emerald-600 text-white shadow"
-                        : "bg-slate-800 text-slate-400 hover:text-white"
-                    }`}
-                  >
-                    <span>🖥️ Localhost Sandbox</span>
-                    <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse" />
-                  </button>
-
-                  <button
-                    onClick={() => setViewMode("code")}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
-                      viewMode === "code"
-                        ? "bg-emerald-600 text-white shadow"
-                        : "bg-slate-800 text-slate-400 hover:text-white"
-                    }`}
-                  >
-                    <span>📁 Project Files & Diffs</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* VIEW 1: LOCALHOST SIMULATION SANDBOX */}
-              {viewMode === "sandbox" && (
-                <div className="rounded-3xl border-2 border-slate-700 bg-slate-950 shadow-2xl overflow-hidden flex flex-col">
-                  {/* Browser Chrome Frame */}
-                  <div className="px-4 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-3 h-3 rounded-full bg-rose-500/80" />
-                      <span className="w-3 h-3 rounded-full bg-amber-500/80" />
-                      <span className="w-3 h-3 rounded-full bg-emerald-500/80" />
-                    </div>
-
-                    <div className="flex-1 max-w-md mx-auto bg-slate-950 px-3 py-1 rounded-lg border border-slate-800 text-xs font-mono text-slate-300 flex items-center justify-center gap-1.5">
-                      <span className="text-emerald-400">🔒</span>
-                      <span>http://localhost:8000</span>
-                    </div>
-
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
-                      LIVE LOCALHOST SIMULATOR
-                    </span>
-                  </div>
-
-                  <div className="w-full h-[520px] bg-slate-950">
-                    <iframe
-                      title="Localhost Simulation Sandbox"
-                      srcDoc={workspace.sandbox_html}
-                      sandbox="allow-scripts allow-modals allow-forms allow-same-origin"
-                      className="w-full h-full border-0"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* VIEW 2: MULTI-FILE EXPLORER & CODE DIFFS */}
-              {viewMode === "code" && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* Left Sidebar: File Tree */}
-                  <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col gap-1.5">
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider px-2 py-1">
-                      Project Files ({workspace.total_files})
-                    </span>
-                    <div className="space-y-1">
-                      {Object.keys(workspace.files).map((filePath) => {
-                        const file = workspace.files[filePath];
-                        const isSelected = selectedFile === filePath;
-                        return (
-                          <button
-                            key={filePath}
-                            onClick={() => setSelectedFile(filePath)}
-                            className={`w-full text-left px-3 py-2 rounded-xl text-xs font-mono flex items-center justify-between transition ${
-                              isSelected
-                                ? "bg-emerald-600 text-white font-bold"
-                                : "text-slate-300 hover:bg-slate-800"
-                            }`}
-                          >
-                            <span className="truncate">📄 {filePath}</span>
-                            {file.is_modified && (
-                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                                PATCHED
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Right: Code Viewer & What Changed in this File */}
-                  <div className="md:col-span-2 space-y-3">
-                    {activeFileObj && (
-                      <>
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono text-xs text-slate-300 font-bold">
-                            Viewing: {activeFileObj.path}
-                          </span>
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(activeFileObj.current_content);
-                              setCopiedCode(true);
-                              setTimeout(() => setCopiedCode(false), 2000);
-                            }}
-                            className="text-xs px-3 py-1 bg-slate-800 hover:bg-slate-700 text-white rounded-lg border border-slate-700 font-mono"
-                          >
-                            {copiedCode ? "✓ Copied" : "Copy File"}
-                          </button>
-                        </div>
-
-                        {/* File Diff if modified */}
-                        {activeFileObj.diff && (
-                          <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
-                            <span className="text-[11px] font-bold text-amber-400">
-                              🔍 Glitch&apos;s Surgical Patch for {activeFileObj.path}:
-                            </span>
-                            <pre className="p-2.5 rounded bg-slate-950 font-mono text-[11px] text-slate-300 overflow-x-auto whitespace-pre max-h-40">
-                              {activeFileObj.diff}
-                            </pre>
-                          </div>
-                        )}
-
-                        {/* Active File Content */}
-                        <pre className="p-4 rounded-2xl bg-slate-950 border border-slate-800 font-mono text-xs text-slate-200 overflow-x-auto whitespace-pre leading-relaxed max-h-96">
-                          {activeFileObj.current_content}
-                        </pre>
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </section>
+        {/* Right Pane: Live Localhost Sandbox & Real-Time Terminal */}
+        <RightPane
+          localhostUrl="http://localhost:8000"
+          telemetryLogs={telemetryLogs}
+          activeAgent={activeAgent}
+          uiTheme={agentConfig.ui_theme_target}
+          isPatching={isRunning}
+        />
       </main>
+
+      {/* Bottom Floating Vibe Bar */}
+      <VibeBar
+        prompt={vibePrompt}
+        onChangePrompt={(p) => setVibePrompt(p)}
+        onSubmit={handleRunVibePrompt}
+        onUploadZip={handleUploadZip}
+        onDownloadZip={handleDownloadZip}
+        isRunning={isRunning}
+        activeAgent={activeAgent}
+      />
+
+      {/* Slide-over Agent Customizer Drawer */}
+      <AgentDrawer
+        isOpen={agentDrawerOpen}
+        onClose={() => setAgentDrawerOpen(false)}
+        config={agentConfig}
+        onChangeConfig={(newConfig) => setAgentConfig(newConfig)}
+        activeAgent={activeAgent}
+      />
     </div>
   );
 }

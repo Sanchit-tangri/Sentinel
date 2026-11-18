@@ -1,23 +1,17 @@
-import ast
+import os
 import uuid
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 
-
-class SymbolDefinition(BaseModel):
-    name: str
-    symbol_type: str  # "function", "async_function", "class", "import", "variable"
-    args: List[str] = Field(default_factory=list)
-    line_number: int = 0
-    docstring: Optional[str] = None
-
-
-class SymbolTable(BaseModel):
-    imports: List[str] = Field(default_factory=list)
-    functions: List[SymbolDefinition] = Field(default_factory=list)
-    classes: List[SymbolDefinition] = Field(default_factory=list)
-    global_variables: List[str] = Field(default_factory=list)
+from context.polyglot_ast import (
+    SymbolDefinition,
+    RouteDefinition,
+    DatabaseModelDefinition,
+    CrossFileImport,
+    SymbolTable,
+    PolyglotASTEngine,
+)
 
 
 class RemediationAttempt(BaseModel):
@@ -32,11 +26,13 @@ class RemediationAttempt(BaseModel):
 
 class SessionLedger:
     """
-    Stateful, model-agnostic Session Ledger.
+    Stateful, model-agnostic Polyglot Session Ledger.
     Maintains the canonical state of a remediation task outside of individual LLM contexts.
-    Ensures that when OmniRoute dynamically switches models mid-task, all critical
-    architectural invariants, code AST symbols, historical attempts, and RAG memories
-    are preserved without degradation.
+    Features:
+      - Polyglot SymbolTable parsing for Python, JS/TS, Java, Kotlin, and Android XML.
+      - In-memory cross-file dependency graph tracking 1-hop imports.
+      - Architectural invariants & prohibited patterns preservation.
+      - Historical remediation attempts and RAG memories.
     """
 
     def __init__(
@@ -57,8 +53,12 @@ class SessionLedger:
         self.active_model: Optional[str] = None
         self.model_history: List[str] = []
 
+        # Multi-file dependency graph
+        self.file_symbols: Dict[str, SymbolTable] = {}
+        self.dependency_graph: Dict[str, List[str]] = {}
+
         if initial_code:
-            self.refresh_symbols(initial_code)
+            self.refresh_symbols(initial_code, filename=self.filename)
 
     def set_architect_boundaries(
         self,
@@ -70,70 +70,114 @@ class SessionLedger:
         if prohibited_patterns:
             self.prohibited_patterns = list(prohibited_patterns)
 
-    def refresh_symbols(self, code: str) -> SymbolTable:
+    def refresh_symbols(self, code: str, filename: Optional[str] = None) -> SymbolTable:
         """
-        Parses source code AST into a structured SymbolTable.
-        Tracks all imports, classes, functions, and arguments to prevent
-        hallucinated or vanished symbols during model switches.
+        Parses source code into a structured polyglot SymbolTable.
+        Tracks all imports, classes, functions, arguments, routes, and models.
         """
-        imports = []
-        functions = []
-        classes = []
-        variables = []
-
-        try:
-            tree = ast.parse(code)
-            for node in ast.iter_child_nodes(tree):
-                if isinstance(node, ast.Import):
-                    for alias in node.names:
-                        imports.append(alias.name)
-                elif isinstance(node, ast.ImportFrom):
-                    module = node.module or ""
-                    for alias in node.names:
-                        imports.append(f"{module}.{alias.name}" if module else alias.name)
-                elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    args = [arg.arg for arg in node.args.args]
-                    docstring = ast.get_docstring(node)
-                    functions.append(
-                        SymbolDefinition(
-                            name=node.name,
-                            symbol_type="async_function" if isinstance(node, ast.AsyncFunctionDef) else "function",
-                            args=args,
-                            line_number=node.lineno,
-                            docstring=docstring
-                        )
-                    )
-                elif isinstance(node, ast.ClassDef):
-                    methods = [n.name for n in node.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
-                    classes.append(
-                        SymbolDefinition(
-                            name=node.name,
-                            symbol_type="class",
-                            args=methods,
-                            line_number=node.lineno,
-                            docstring=ast.get_docstring(node)
-                        )
-                    )
-                elif isinstance(node, ast.Assign):
-                    for target in node.targets:
-                        if isinstance(target, ast.Name):
-                            variables.append(target.id)
-        except SyntaxError:
-            # Code may have momentary syntax invalidity during intermediate generation
-            pass
-
-        self.symbol_table = SymbolTable(
-            imports=list(set(imports)),
-            functions=functions,
-            classes=classes,
-            global_variables=list(set(variables))
-        )
+        target_file = filename or self.filename
+        self.symbol_table = PolyglotASTEngine.parse(code, filename=target_file)
+        self.file_symbols[target_file] = self.symbol_table
+        self._rebuild_dependency_graph()
         return self.symbol_table
+
+    def register_file(self, path: str, code: str) -> SymbolTable:
+        """Registers or updates a file in the multi-file ledger workspace."""
+        table = PolyglotASTEngine.parse(code, filename=path)
+        self.file_symbols[path] = table
+        if path == self.filename:
+            self.symbol_table = table
+            self.active_code = code
+        self._rebuild_dependency_graph()
+        return table
+
+    def _rebuild_dependency_graph(self) -> None:
+        """
+        Constructs the directed dependency graph across all registered files.
+        Maps each file to the exact list of internal files it imports.
+        """
+        known_files = list(self.file_symbols.keys())
+        new_graph: Dict[str, List[str]] = {}
+
+        for file_path, table in self.file_symbols.items():
+            deps: List[str] = []
+            dir_name = os.path.dirname(file_path).replace("\\", "/")
+
+            # Check cross-file imports
+            for imp in table.cross_file_imports:
+                raw_src = imp.source_path.replace("\\", "/")
+
+                # 1. Direct path match
+                if raw_src in known_files and raw_src != file_path:
+                    deps.append(raw_src)
+                    continue
+
+                # 2. Relative resolution: e.g. ./utils -> dir_name/utils[.js/.ts/.py]
+                if imp.is_relative or raw_src.startswith("."):
+                    resolved = os.path.normpath(os.path.join(dir_name, raw_src)).replace("\\", "/")
+                    match = self._find_matching_file(resolved, known_files)
+                    if match and match != file_path:
+                        deps.append(match)
+                        continue
+
+                # 3. Module / Package resolution (e.g. Java/Kotlin package com.example.service.UserService)
+                match = self._find_matching_file(raw_src, known_files)
+                if match and match != file_path:
+                    deps.append(match)
+
+            new_graph[file_path] = list(dict.fromkeys(deps))
+
+        self.dependency_graph = new_graph
+
+    def _find_matching_file(self, candidate_path: str, known_files: List[str]) -> Optional[str]:
+        """Finds matching known file path taking file extensions into account."""
+        norm_candidate = candidate_path.replace("\\", "/")
+        extensions = ["", ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".kt"]
+        for ext in extensions:
+            test_path = norm_candidate + ext
+            if test_path in known_files:
+                return test_path
+            # Also check base name matches for Java/Kotlin packages
+            base_name = os.path.basename(test_path)
+            for k in known_files:
+                if os.path.basename(k) == base_name or k.endswith("/" + test_path):
+                    return k
+        return None
+
+    def get_1_hop_imported_symbols(self, file_path: Optional[str] = None) -> Dict[str, SymbolTable]:
+        """
+        Returns the exact SymbolTables of all 1-hop dependencies imported by the specified file.
+        This provides ContextNormalizer with exact signatures, eliminating cross-file hallucinations.
+        """
+        target = file_path or self.filename
+        deps = self.dependency_graph.get(target, [])
+        result: Dict[str, SymbolTable] = {}
+
+        for dep in deps:
+            if dep in self.file_symbols:
+                result[dep] = self.file_symbols[dep]
+
+        # If no registered internal files match yet, synthesize 1-hop signatures from CrossFileImports
+        if not result and target in self.file_symbols:
+            current_table = self.file_symbols[target]
+            for imp in current_table.cross_file_imports:
+                if imp.imported_symbols:
+                    synthetic_funcs = [
+                        SymbolDefinition(name=sym, symbol_type="function", args=[], file_path=imp.source_path)
+                        for sym in imp.imported_symbols
+                    ]
+                    result[imp.source_path] = SymbolTable(
+                        imports=[imp.source_path],
+                        functions=synthetic_funcs,
+                        classes=[]
+                    )
+
+        return result
 
     def update_active_code(self, new_code: str) -> None:
         """Updates the active working code and re-indexes AST symbols."""
         self.active_code = new_code
-        self.refresh_symbols(new_code)
+        self.refresh_symbols(new_code, filename=self.filename)
 
     def record_model_switch(self, new_model_id: str) -> bool:
         """
@@ -184,7 +228,9 @@ class SessionLedger:
             "attempts": [a.model_dump() for a in self.attempts],
             "retrieved_rag_memories": self.retrieved_rag_memories,
             "active_model": self.active_model,
-            "model_history": self.model_history
+            "model_history": self.model_history,
+            "file_symbols": {k: v.model_dump() for k, v in self.file_symbols.items()},
+            "dependency_graph": self.dependency_graph
         }
 
     @classmethod
@@ -204,4 +250,10 @@ class SessionLedger:
         ledger.retrieved_rag_memories = data.get("retrieved_rag_memories", [])
         ledger.active_model = data.get("active_model")
         ledger.model_history = data.get("model_history", [])
+
+        if "file_symbols" in data:
+            ledger.file_symbols = {k: SymbolTable(**v) for k, v in data["file_symbols"].items()}
+        if "dependency_graph" in data:
+            ledger.dependency_graph = data["dependency_graph"]
+
         return ledger

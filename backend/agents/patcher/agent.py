@@ -200,4 +200,44 @@ class PatcherAgent:
                     patched_code = new_code
                     applied_fixes.append(f"Replaced eval() with ast.literal_eval(){rag_context}")
 
+            elif finding.cwe_id == "CWE-943":  # MERN NoSQLi
+                new_code = re.sub(r'\.find\s*\(\s*req\.body\s*\)', '.find(mongoSanitize(req.body))', patched_code)
+                if new_code != patched_code:
+                    if "mongoSanitize" not in new_code:
+                        new_code = "const mongoSanitize = require('mongo-sanitize');\n" + new_code
+                    patched_code = new_code
+                    applied_fixes.append("Sanitized MongoDB req.body query parameters with mongo-sanitize")
+
+            elif finding.cwe_id == "CWE-79":   # XSS
+                new_code = re.sub(r'dangerouslySetInnerHTML=\{\{\s*__html:\s*([^\}]+)\s*\}\}', r'dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(\1) }}', patched_code)
+                if new_code != patched_code:
+                    if "DOMPurify" not in new_code:
+                        new_code = "import DOMPurify from 'dompurify';\n" + new_code
+                    patched_code = new_code
+                    applied_fixes.append("Sanitized HTML injection via DOMPurify.sanitize()")
+
+            elif finding.cwe_id == "CWE-942":  # CORS
+                new_code = re.sub(r'origin\s*:\s*["\']\*["\']', "origin: ['http://localhost:3000']", patched_code)
+                if new_code != patched_code:
+                    patched_code = new_code
+                    applied_fixes.append("Restricted wildcard CORS policy to authorized origins")
+
+            elif finding.cwe_id == "CWE-798":  # Hardcoded Secrets
+                new_code = re.sub(r'jwt\.sign\s*\(([^,]+),\s*["\'][^"\']+["\']', r'jwt.sign(\1, process.env.JWT_SECRET || "default_secure_secret"', patched_code)
+                if new_code != patched_code:
+                    patched_code = new_code
+                    applied_fixes.append("Replaced hardcoded JWT secret with process.env.JWT_SECRET")
+
+            elif finding.cwe_id == "CWE-926":  # Android exported component
+                new_code = re.sub(r'android:exported=["\']true["\']', 'android:exported="false"', patched_code)
+                if new_code != patched_code:
+                    patched_code = new_code
+                    applied_fixes.append("Set android:exported='false' for unprotected internal components")
+
+            elif finding.cwe_id == "CWE-319":  # Cleartext traffic
+                new_code = re.sub(r'android:usesCleartextTraffic=["\']true["\']', 'android:usesCleartextTraffic="false"', patched_code)
+                if new_code != patched_code:
+                    patched_code = new_code
+                    applied_fixes.append("Enforced TLS by setting android:usesCleartextTraffic='false'")
+
         return patched_code, applied_fixes

@@ -1,15 +1,31 @@
 @import "tailwindcss";
 
 :root {
-  --background: #060913;
+  --background: #07090e;
   --foreground: #f1f5f9;
 }
 
 body {
-  background: #060913;
+  background: #07090e;
   color: #f1f5f9;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", "Geist", sans-serif;
   overflow-x: hidden;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(7, 9, 14, 0.6);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
 }
 
 /* Custom Game-Studio Keyframes */
@@ -42,7 +58,7 @@ body {
     transform: translateY(0px);
   }
   50% {
-    transform: translateY(-7px);
+    transform: translateY(-6px);
   }
 }
 
@@ -92,12 +108,17 @@ body {
   80% { transform: translate(2px, 1px); }
 }
 
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.04); }
+}
+
 .animate-cyber-grid {
   background-image: 
-    linear-gradient(to right, rgba(30, 41, 59, 0.3) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(30, 41, 59, 0.3) 1px, transparent 1px);
+    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
   background-size: 32px 32px;
-  animation: cyberGrid 20s linear infinite;
+  animation: cyberGrid 25s linear infinite;
 }
 
 .animate-dance {
@@ -118,4 +139,13 @@ body {
 
 .animate-screen-shake {
   animation: screenShake 0.35s ease-in-out;
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 3s ease-in-out infinite;
+}
+
+/* Code Typography */
+.font-mono-code {
+  font-family: "JetBrains Mono", "Fira Code", Menlo, Monaco, Consolas, monospace;
 }

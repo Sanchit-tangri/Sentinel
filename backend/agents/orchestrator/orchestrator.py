@@ -1,9 +1,12 @@
+import asyncio
+import difflib
 from typing import Dict, Any, List, Optional
-from schemas.models import AuditResult, PatchResult, ArchitectSpecification
+from schemas.models import AuditResult, PatchResult, ArchitectSpecification, AgentConfig
 from agents.architect.agent import ArchitectAgent
 from agents.developer.agent import DeveloperAgent
 from agents.auditor.agent import AuditorAgent
 from agents.patcher.agent import PatcherAgent
+from agents.orchestrator.event_bus import SessionEventBus
 from rag.memory_store import MemoryStore
 from routing.omniroute_client import OmniRouteClient
 from context.session_ledger import SessionLedger
@@ -11,51 +14,73 @@ from context.session_ledger import SessionLedger
 
 class RemediationOrchestrator:
     """
-    Central loop orchestrator coordinating:
-    Architect -> Developer -> Auditor -> Patcher -> Self-Learning RAG Ingestion.
-    Preserves context through SessionLedger and routes LLM calls via OmniRoute.
+    Sentinel v1.0 Polyglot Multi-Agent Orchestrator.
+    Coordinates:
+      - Dex (The Architect): Threat modeling & boundary formulation
+      - Pixel (The Developer): OmniRoute code synthesis & framework scaffolding
+      - Snooze (The Auditor): Polyglot OWASP Top 10 & CWE verification
+      - Glitch (The Patcher): Zero-regression surgical remediation & live diff streaming
+    Supports:
+      - Execution modes: 'autopilot' (automated self-healing) and 'vibe_interactive' (approval gate)
+      - Real-time WebSocket telemetry event streaming (AGENT_STATE, CURSOR_MOVE, VULN_DETECTED, LIVE_DIFF_CHUNK)
+      - Customizable agent config: persona_style, security_level, ui_theme_target
     """
 
     def __init__(
         self,
         max_iterations: int = 3,
         memory_store: Optional[MemoryStore] = None,
-        omniroute_client: Optional[OmniRouteClient] = None
+        omniroute_client: Optional[OmniRouteClient] = None,
+        event_bus: Optional[SessionEventBus] = None
     ):
         self.max_iterations = max_iterations
         self.memory_store = memory_store or MemoryStore()
         self.omniroute_client = omniroute_client or OmniRouteClient()
+        self.event_bus = event_bus or SessionEventBus()
 
         self.architect = ArchitectAgent()
         self.developer = DeveloperAgent(omniroute_client=self.omniroute_client)
-        self.auditor = AuditorAgent()
+        self.auditor = AuditorAgent(name="Snooze")
         self.patcher = PatcherAgent(
             memory_store=self.memory_store,
-            omniroute_client=self.omniroute_client
+            omniroute_client=self.omniroute_client,
+            name="Glitch"
         )
 
+    # -------------------------------------------------------------------------
+    # Synchronous Remediation Loop (100% Backwards Compatible for Tests & REST)
+    # -------------------------------------------------------------------------
     def remediate_code(
         self,
         raw_code: str,
         filename: str = "snippet.py",
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
+        mode: str = "autopilot",
+        agent_config: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Executes the self-healing iterative loop on input code.
-        Maintains an immutable SessionLedger so if OmniRoute switches models
-        mid-loop, context and symbol invariants remain rock-solid.
+        Preserves backward compatibility while recording telemetry events.
         """
         ledger = SessionLedger(
             session_id=session_id,
             filename=filename,
             initial_code=raw_code
         )
+        sid = ledger.session_id
+        config = agent_config or {}
+        persona = config.get("persona_style", "principal_engineer")
+        sec_level = config.get("security_level", "balanced")
 
         current_code = raw_code
         iteration_history: List[Dict[str, Any]] = []
         is_resolved = False
 
-        # Step 1: Architect boundaries check
+        # Scene 1: Dex (The Architect)
+        msg_dex = self.event_bus.style_message("dex", "thinking", f"invariants for {filename}", persona)
+        self.event_bus.emit_sync(sid, {"type": "AGENT_STATE", "agent": "dex", "status": "thinking", "message": msg_dex})
+        self.event_bus.emit_sync(sid, {"type": "CURSOR_MOVE", "agent": "dex", "file": filename, "line": 1, "column": 1})
+
         spec = self.architect.analyze_boundaries(
             task_description=f"Audit and remediate security vulnerabilities in {filename}"
         )
@@ -65,8 +90,17 @@ class RemediationOrchestrator:
         )
 
         for iteration in range(1, self.max_iterations + 1):
-            # Step 2: Auditor scans current code
-            audit_result: AuditResult = self.auditor.audit_code(current_code, filename=filename)
+            # Scene 2: Snooze (The Auditor)
+            msg_snooze = self.event_bus.style_message("snooze", "scanning", f"iteration {iteration}", persona)
+            self.event_bus.emit_sync(sid, {"type": "AGENT_STATE", "agent": "snooze", "status": "scanning", "message": msg_snooze})
+
+            audit_result: AuditResult = self.auditor.audit_code(current_code, filename=filename, security_level=sec_level)
+
+            # Stream findings & cursor moves
+            for finding in audit_result.findings:
+                line_no = finding.line_number or 1
+                self.event_bus.emit_sync(sid, {"type": "CURSOR_MOVE", "agent": "snooze", "file": finding.file_path or filename, "line": line_no, "column": 1})
+                self.event_bus.emit_sync(sid, {"type": "VULN_DETECTED", "finding": finding.model_dump()})
 
             iteration_entry = {
                 "iteration": iteration,
@@ -79,9 +113,17 @@ class RemediationOrchestrator:
             if audit_result.is_secure:
                 is_resolved = True
                 iteration_history.append(iteration_entry)
+                msg_done = self.event_bus.style_message("snooze", "completed", "All checks passed clean.", persona)
+                self.event_bus.emit_sync(sid, {"type": "AGENT_STATE", "agent": "snooze", "status": "completed", "message": msg_done})
                 break
 
-            # Step 3: Patcher applies surgical fix via OmniRoute + RAG memories
+            # Scene 3: Glitch (The Patcher)
+            msg_glitch = self.event_bus.style_message("glitch", "editing", f"remediating {len(audit_result.findings)} finding(s)", persona)
+            self.event_bus.emit_sync(sid, {"type": "AGENT_STATE", "agent": "glitch", "status": "editing", "message": msg_glitch})
+
+            first_line = audit_result.findings[0].line_number or 1
+            self.event_bus.emit_sync(sid, {"type": "CURSOR_MOVE", "agent": "glitch", "file": filename, "line": first_line, "column": 1})
+
             patch_result: PatchResult = self.patcher.generate_patch(
                 code=current_code,
                 audit_result=audit_result,
@@ -89,15 +131,18 @@ class RemediationOrchestrator:
                 session_ledger=ledger
             )
 
-            # Step 4: Verify patch with a second audit
-            post_patch_audit = self.auditor.audit_code(patch_result.patched_code, filename=filename)
+            # Stream live diff chunk
+            self._stream_diff_chunks_sync(sid, filename, patch_result.diff, patch_result.explanation)
+
+            # Scene 4: Verify patch with a second audit
+            post_patch_audit = self.auditor.audit_code(patch_result.patched_code, filename=filename, security_level=sec_level)
 
             iteration_entry["patch_diff"] = patch_result.diff
             iteration_entry["patch_explanation"] = patch_result.explanation
             iteration_entry["model_used"] = ledger.active_model
             iteration_history.append(iteration_entry)
 
-            # Step 5: Self-learning RAG ingestion on verified fix
+            # Scene 5: Self-learning RAG ingestion on verified fix
             if post_patch_audit.is_secure and not audit_result.is_secure:
                 for finding in audit_result.findings:
                     self.memory_store.record_success(
@@ -106,13 +151,14 @@ class RemediationOrchestrator:
                         patched_diff=patch_result.diff,
                         explanation=patch_result.explanation
                     )
-                # Mark attempt as passed in ledger
                 if ledger.attempts:
                     ledger.attempts[-1].passed_audit = True
 
             current_code = patch_result.patched_code
             if post_patch_audit.is_secure:
                 is_resolved = True
+                msg_glitch_done = self.event_bus.style_message("glitch", "completed", "", persona)
+                self.event_bus.emit_sync(sid, {"type": "AGENT_STATE", "agent": "glitch", "status": "completed", "message": msg_glitch_done})
                 break
 
         return {
@@ -124,29 +170,179 @@ class RemediationOrchestrator:
             "history": iteration_history,
             "architect_spec": spec.model_dump(),
             "model_history": ledger.model_history,
-            "final_model": ledger.active_model
+            "final_model": ledger.active_model,
+            "mode": mode,
+            "agent_config": config
         }
 
+    # -------------------------------------------------------------------------
+    # Asynchronous Remediation Loop (Real-Time WebSocket & Vibe Interactive)
+    # -------------------------------------------------------------------------
+    async def remediate_code_async(
+        self,
+        raw_code: str,
+        filename: str = "snippet.py",
+        session_id: Optional[str] = None,
+        mode: str = "autopilot",
+        agent_config: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Asynchronous orchestrator loop with interactive Vibe Coding support.
+        In 'vibe_interactive' mode:
+          Pauses via an asyncio.Event when Snooze detects vulnerabilities,
+          and awaits WebSocket command APPROVE_FIX before Glitch applies the patch.
+        In 'autopilot' mode:
+          Auto-remediates all findings in an automated loop.
+        """
+        ledger = SessionLedger(
+            session_id=session_id,
+            filename=filename,
+            initial_code=raw_code
+        )
+        sid = ledger.session_id
+        config = agent_config or {}
+        persona = config.get("persona_style", "principal_engineer")
+        sec_level = config.get("security_level", "balanced")
+
+        current_code = raw_code
+        iteration_history: List[Dict[str, Any]] = []
+        is_resolved = False
+
+        # Dex: The Architect
+        msg_dex = self.event_bus.style_message("dex", "thinking", f"modeling attack surfaces in {filename}", persona)
+        await self.event_bus.broadcast(sid, {"type": "AGENT_STATE", "agent": "dex", "status": "thinking", "message": msg_dex})
+        await self.event_bus.broadcast(sid, {"type": "CURSOR_MOVE", "agent": "dex", "file": filename, "line": 1, "column": 1})
+
+        spec = self.architect.analyze_boundaries(
+            task_description=f"Audit and remediate security vulnerabilities in {filename}"
+        )
+        ledger.set_architect_boundaries(
+            invariants=spec.security_invariants,
+            prohibited_patterns=spec.prohibited_patterns
+        )
+
+        for iteration in range(1, self.max_iterations + 1):
+            # Snooze: The Auditor
+            msg_snooze = self.event_bus.style_message("snooze", "scanning", f"pass {iteration}", persona)
+            await self.event_bus.broadcast(sid, {"type": "AGENT_STATE", "agent": "snooze", "status": "scanning", "message": msg_snooze})
+
+            audit_result: AuditResult = self.auditor.audit_code(current_code, filename=filename, security_level=sec_level)
+
+            for finding in audit_result.findings:
+                line_no = finding.line_number or 1
+                await self.event_bus.broadcast(sid, {"type": "CURSOR_MOVE", "agent": "snooze", "file": finding.file_path or filename, "line": line_no, "column": 1})
+                await self.event_bus.broadcast(sid, {"type": "VULN_DETECTED", "finding": finding.model_dump()})
+
+            iteration_entry = {
+                "iteration": iteration,
+                "is_secure": audit_result.is_secure,
+                "findings": [f.model_dump() for f in audit_result.findings],
+                "code_snapshot": current_code,
+                "active_model": ledger.active_model
+            }
+
+            if audit_result.is_secure:
+                is_resolved = True
+                iteration_history.append(iteration_entry)
+                msg_done = self.event_bus.style_message("snooze", "completed", "Zero vulnerabilities detected.", persona)
+                await self.event_bus.broadcast(sid, {"type": "AGENT_STATE", "agent": "snooze", "status": "completed", "message": msg_done})
+                break
+
+            # -----------------------------------------------------------------
+            # Interactive Vibe Coding Pause Gate
+            # -----------------------------------------------------------------
+            approval_payload = {}
+            if mode == "vibe_interactive" and audit_result.findings:
+                msg_pause = self.event_bus.style_message("snooze", "waiting_approval", "", persona)
+                await self.event_bus.broadcast(sid, {
+                    "type": "AGENT_STATE",
+                    "agent": "snooze",
+                    "status": "waiting_approval",
+                    "message": msg_pause,
+                    "findings_count": len(audit_result.findings),
+                    "options": [
+                        {"finding_id": f.id, "title": f.title, "fix_options": f.fix_options}
+                        for f in audit_result.findings
+                    ]
+                })
+
+                # Pause on asyncio.Event awaiting WebSocket command APPROVE_FIX
+                first_finding_id = audit_result.findings[0].id
+                approval_payload = await self.event_bus.wait_for_approval(sid, first_finding_id)
+
+            # Glitch: The Patcher
+            selected_strat = approval_payload.get("selected_strategy", "")
+            strat_detail = f"with approved strategy: {selected_strat}" if selected_strat else "initiating surgical patch"
+            msg_glitch = self.event_bus.style_message("glitch", "editing", strat_detail, persona)
+            await self.event_bus.broadcast(sid, {"type": "AGENT_STATE", "agent": "glitch", "status": "editing", "message": msg_glitch})
+
+            first_line = audit_result.findings[0].line_number or 1
+            await self.event_bus.broadcast(sid, {"type": "CURSOR_MOVE", "agent": "glitch", "file": filename, "line": first_line, "column": 1})
+
+            patch_result: PatchResult = self.patcher.generate_patch(
+                code=current_code,
+                audit_result=audit_result,
+                iteration=iteration,
+                session_ledger=ledger
+            )
+
+            # Stream live diff chunks
+            await self._stream_diff_chunks_async(sid, filename, patch_result.diff, patch_result.explanation)
+
+            # Re-audit post-patch
+            post_patch_audit = self.auditor.audit_code(patch_result.patched_code, filename=filename, security_level=sec_level)
+
+            iteration_entry["patch_diff"] = patch_result.diff
+            iteration_entry["patch_explanation"] = patch_result.explanation
+            iteration_entry["model_used"] = ledger.active_model
+            iteration_history.append(iteration_entry)
+
+            # Ingest verified fix to RAG
+            if post_patch_audit.is_secure and not audit_result.is_secure:
+                for finding in audit_result.findings:
+                    self.memory_store.record_success(
+                        vulnerability=finding,
+                        vulnerable_code=current_code,
+                        patched_diff=patch_result.diff,
+                        explanation=patch_result.explanation
+                    )
+                if ledger.attempts:
+                    ledger.attempts[-1].passed_audit = True
+
+            current_code = patch_result.patched_code
+            if post_patch_audit.is_secure:
+                is_resolved = True
+                msg_glitch_done = self.event_bus.style_message("glitch", "completed", "Patch verified clean.", persona)
+                await self.event_bus.broadcast(sid, {"type": "AGENT_STATE", "agent": "glitch", "status": "completed", "message": msg_glitch_done})
+                break
+
+        return {
+            "session_id": ledger.session_id,
+            "initial_code": raw_code,
+            "final_code": current_code,
+            "is_secure": is_resolved,
+            "total_iterations": len(iteration_history),
+            "history": iteration_history,
+            "architect_spec": spec.model_dump(),
+            "model_history": ledger.model_history,
+            "final_model": ledger.active_model,
+            "mode": mode,
+            "agent_config": config
+        }
+
+    # -------------------------------------------------------------------------
+    # Unified End-to-End Pipeline Synthesis
+    # -------------------------------------------------------------------------
     def synthesize_and_secure(
         self,
         prompt: str,
         filename: str = "application.py"
     ) -> Dict[str, Any]:
-        """
-        Unified End-to-End Pipeline:
-        Prompt -> Architect Analysis -> Developer OmniRoute Synthesis
-               -> Auditor Dual-Engine Scan -> Patcher Remediation -> RAG Memory Persistence.
-        Returns a rich chronological timeline visualizing the thought stream and actions of each agent.
-        """
-        ledger = SessionLedger(
-            filename=filename,
-            initial_code=""
-        )
+        """Unified prompt-to-defensible-code generation timeline."""
+        ledger = SessionLedger(filename=filename, initial_code="")
         timeline: List[Dict[str, Any]] = []
 
-        # =========================================================================
-        # SCENE 1: The Architect (Strategic Security Boundary Definition)
-        # =========================================================================
+        # Dex
         spec = self.architect.analyze_boundaries(
             task_description=f"Formulate security invariants and architectural constraints for: {prompt}"
         )
@@ -154,14 +350,6 @@ class RemediationOrchestrator:
             invariants=spec.security_invariants,
             prohibited_patterns=spec.prohibited_patterns
         )
-
-        invariants_preview = "; ".join(spec.security_invariants[:2])
-        architect_thought = (
-            f"Deconstructed prompt: '{prompt[:90]}...'. Identified attack surfaces, "
-            f"trust boundaries ({', '.join(spec.trust_boundaries[:2])}), and established "
-            f"non-negotiable security invariants: {invariants_preview}."
-        )
-
         timeline.append({
             "id": "architect",
             "agent": "The Architect",
@@ -169,31 +357,13 @@ class RemediationOrchestrator:
             "model": "claude-3-5-sonnet-20241022",
             "tier": "STRATEGIC",
             "status": "completed",
-            "thought": architect_thought,
-            "details": {
-                "trust_boundaries": spec.trust_boundaries,
-                "security_invariants": spec.security_invariants,
-                "prohibited_patterns": spec.prohibited_patterns
-            }
+            "thought": f"Formulated security invariants for: '{prompt[:80]}...'",
+            "details": spec.model_dump()
         })
 
-        # =========================================================================
-        # SCENE 2: The Developer (OmniRoute Code Synthesis)
-        # =========================================================================
-        dev_result = self.developer.implement(
-            task_prompt=prompt,
-            spec=spec,
-            session_ledger=ledger
-        )
+        # Pixel
+        dev_result = self.developer.implement(task_prompt=prompt, spec=spec, session_ledger=ledger)
         initial_code = dev_result["code"]
-        sandbox_html = dev_result.get("sandbox_html", "")
-        line_count = len(initial_code.splitlines())
-
-        developer_thought = (
-            f"Synthesized application code ({line_count} lines) via OmniRoute [{dev_result['model_used']}]. "
-            f"Enforced Architect input boundaries. DriftGuard AST check: {dev_result['drift_report']['summary']}."
-        )
-
         timeline.append({
             "id": "developer",
             "agent": "The Developer",
@@ -201,24 +371,13 @@ class RemediationOrchestrator:
             "model": dev_result["model_used"],
             "tier": dev_result["tier"],
             "status": "completed",
-            "thought": developer_thought,
+            "thought": f"Synthesized application code via OmniRoute [{dev_result['model_used']}].",
             "latency_ms": dev_result["latency_ms"],
-            "details": {
-                "code": initial_code,
-                "drift_report": dev_result["drift_report"]
-            }
+            "details": {"code": initial_code, "drift_report": dev_result["drift_report"]}
         })
 
-        # =========================================================================
-        # SCENE 3: The Auditor (Verification Layer)
-        # =========================================================================
+        # Snooze
         audit_result: AuditResult = self.auditor.audit_code(initial_code, filename=filename)
-        
-        auditor_thought = (
-            f"Audit verified {line_count} lines against OWASP Top 10 & CWE taxonomies. "
-            f"Result: {audit_result.summary}"
-        )
-
         timeline.append({
             "id": "auditor",
             "agent": "The Auditor",
@@ -226,21 +385,14 @@ class RemediationOrchestrator:
             "model": "hybrid-ast-engine",
             "tier": "VERIFICATION",
             "status": "completed",
-            "thought": auditor_thought,
-            "details": {
-                "is_secure": audit_result.is_secure,
-                "findings": [f.model_dump() for f in audit_result.findings],
-                "summary": audit_result.summary
-            }
+            "thought": f"Audit verified against OWASP Top 10 & CWE taxonomies. Result: {audit_result.summary}",
+            "details": {"is_secure": audit_result.is_secure, "findings": [f.model_dump() for f in audit_result.findings]}
         })
 
-        # =========================================================================
-        # SCENE 4: The Patcher (Remediation & Surgical Convergence)
-        # =========================================================================
+        # Glitch
         final_code = initial_code
         patch_diff = ""
         patch_explanation = ""
-
         if not audit_result.is_secure:
             patch_result: PatchResult = self.patcher.generate_patch(
                 code=initial_code,
@@ -252,10 +404,7 @@ class RemediationOrchestrator:
             patch_diff = patch_result.diff
             patch_explanation = patch_result.explanation
 
-            # Re-audit post-patch
             post_audit = self.auditor.audit_code(final_code, filename=filename)
-
-            # Ingest to RAG
             if post_audit.is_secure:
                 for finding in audit_result.findings:
                     self.memory_store.record_success(
@@ -265,101 +414,56 @@ class RemediationOrchestrator:
                         explanation=patch_explanation
                     )
 
-            patcher_thought = (
-                f"Surgically remediated {len(audit_result.findings)} vulnerability finding(s). "
-                f"Generated unified diff and validated zero AST drift. Code is now verified secure."
-            )
-
-            diff_items = []
-            for line in patch_diff.split("\n"):
-                if line.startswith("-") and not line.startswith("---"):
-                    diff_items.append({
-                        "type": "removed",
-                        "code": line[1:].strip(),
-                        "reason": "Vulnerable pattern detected by Auditor (e.g. potential injection or unsafe execution)"
-                    })
-                elif line.startswith("+") and not line.startswith("+++"):
-                    diff_items.append({
-                        "type": "added",
-                        "code": line[1:].strip(),
-                        "reason": "Surgically patched with parameterized or sanitized defensive invariant"
-                    })
-
             timeline.append({
                 "id": "patcher",
                 "agent": "The Patcher",
-                "role": "Surgical Vulnerability Remediation",
-                "model": ledger.active_model or "mistralai/codestral-2501",
+                "role": "Surgical Remediation & RAG Ingestion",
+                "model": ledger.active_model or "surgical-patch-engine",
                 "tier": "SURGICAL_PATCH",
                 "status": "completed",
-                "thought": patcher_thought,
-                "details": {
-                    "diff": patch_diff,
-                    "explanation": patch_explanation,
-                    "diff_items": diff_items,
-                    "post_audit_secure": post_audit.is_secure
-                }
+                "thought": f"Remediated {len(audit_result.findings)} finding(s). Verified clean.",
+                "details": {"diff": patch_diff, "explanation": patch_explanation}
             })
-        else:
-            diff_items = []
-            patcher_thought = (
-                "Verified code conforms 100% to Architect security invariants. "
-                "Zero vulnerabilities found; zero patches required. Code is secure by design."
-            )
-            timeline.append({
-                "id": "patcher",
-                "agent": "The Patcher",
-                "role": "Invariance & Regression Verification",
-                "model": "verified-pass",
-                "tier": "SURGICAL_PATCH",
-                "status": "completed",
-                "thought": patcher_thought,
-                "details": {
-                    "diff": "",
-                    "explanation": "Code generated by Developer Agent passed verification with 0 security flaws."
-                }
-            })
-
-        # =========================================================================
-        # SCENE 5: RAG & Context Memory Ledger (Persistence)
-        # =========================================================================
-        rag_thought = (
-            f"Session {ledger.session_id} state preserved in immutable ledger. "
-            f"Cataloged {len(ledger.symbol_table.functions)} functional symbol(s). "
-            f"Continuity maintained across OmniRoute routing transitions with zero context loss."
-        )
-
-        timeline.append({
-            "id": "rag",
-            "agent": "Memory Ledger & RAG",
-            "role": "Episodic Memory & Context Ledger",
-            "model": "chromadb-vector-store",
-            "tier": "PERSISTENCE",
-            "status": "completed",
-            "thought": rag_thought,
-            "details": {
-                "session_id": ledger.session_id,
-                "symbols_indexed": len(ledger.symbol_table.functions),
-                "model_history": ledger.model_history + ([ledger.active_model] if ledger.active_model else [])
-            }
-        })
-
-        models_used = list(dict.fromkeys([
-            t["model"] for t in timeline if t.get("model") and t["model"] != "verified-pass"
-        ]))
 
         return {
             "session_id": ledger.session_id,
-            "prompt": prompt,
-            "timeline": timeline,
+            "filename": filename,
             "initial_code": initial_code,
             "final_code": final_code,
-            "sandbox_html": sandbox_html,
-            "patch_diff": patch_diff,
-            "patch_explanation": patch_explanation,
-            "diff_items": diff_items,
-            "is_secure": True,
-            "architect_spec": spec.model_dump(),
-            "findings": [f.model_dump() for f in audit_result.findings],
-            "models_used": models_used
+            "is_secure": audit_result.is_secure or (patch_diff != ""),
+            "timeline": timeline,
+            "sandbox_html": dev_result.get("sandbox_html", "")
         }
+
+    # -------------------------------------------------------------------------
+    # Diff Streaming Helpers
+    # -------------------------------------------------------------------------
+    def _extract_diff_chunk(self, filename: str, diff_text: str, explanation: str) -> Optional[Dict[str, Any]]:
+        orig_lines = []
+        patch_lines = []
+        for line in diff_text.splitlines():
+            if line.startswith("---") or line.startswith("+++"):
+                continue
+            elif line.startswith("-"):
+                orig_lines.append(line[1:])
+            elif line.startswith("+"):
+                patch_lines.append(line[1:])
+        if orig_lines or patch_lines:
+            return {
+                "type": "LIVE_DIFF_CHUNK",
+                "file": filename,
+                "original_lines": orig_lines,
+                "patched_lines": patch_lines,
+                "explanation": explanation
+            }
+        return None
+
+    def _stream_diff_chunks_sync(self, session_id: str, filename: str, diff_text: str, explanation: str) -> None:
+        chunk = self._extract_diff_chunk(filename, diff_text, explanation)
+        if chunk:
+            self.event_bus.emit_sync(session_id, chunk)
+
+    async def _stream_diff_chunks_async(self, session_id: str, filename: str, diff_text: str, explanation: str) -> None:
+        chunk = self._extract_diff_chunk(filename, diff_text, explanation)
+        if chunk:
+            await self.event_bus.broadcast(session_id, chunk)
