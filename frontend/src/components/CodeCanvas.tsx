@@ -194,10 +194,30 @@ export const CodeCanvas: React.FC<CodeCanvasProps> = ({
                           {finding.description}
                         </p>
 
-                        {finding.exploit_poc && (
+                        {/* White-Box Taint Flow Trace */}
+                        {finding.whitebox_trace && (
+                          <div className="p-2.5 rounded-lg bg-black/60 border border-purple-500/20 text-[11px] font-mono-code flex flex-col gap-1">
+                            <span className="font-bold text-purple-400">White-Box Taint Flow Trace:</span>
+                            <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
+                              <span className="px-2 py-0.5 rounded bg-rose-950/60 text-rose-300 border border-rose-500/30">
+                                <b>Source:</b> {finding.whitebox_trace.source}
+                              </span>
+                              <span className="text-slate-500">→</span>
+                              <span className="px-2 py-0.5 rounded bg-amber-950/60 text-amber-300 border border-amber-500/30">
+                                <b>Sanitizer:</b> {finding.whitebox_trace.sanitizer || "None (Missing / Ineffective)"}
+                              </span>
+                              <span className="text-slate-500">→</span>
+                              <span className="px-2 py-0.5 rounded bg-cyan-950/60 text-cyan-300 border border-cyan-500/30">
+                                <b>Sink:</b> {finding.whitebox_trace.sink}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {(finding.exploit_demo || finding.exploit_poc) && (
                           <div className="p-2.5 rounded-lg bg-black/50 border border-rose-500/20 text-[11px] text-rose-300/90 font-mono-code">
-                            <span className="font-bold text-rose-400">Attack Vector: </span>
-                            {finding.exploit_poc}
+                            <span className="font-bold text-rose-400">Exploit Demo Payload: </span>
+                            <code className="text-rose-200 bg-rose-950/40 px-1.5 py-0.5 rounded">{finding.exploit_demo || finding.exploit_poc}</code>
                           </div>
                         )}
                       </div>
@@ -205,30 +225,25 @@ export const CodeCanvas: React.FC<CodeCanvasProps> = ({
                       {/* Interactive Vibe Coding Remediation Buttons */}
                       <div className="mt-3.5 pt-3 border-t border-rose-500/20 flex flex-col gap-2">
                         <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                          Architectural Remediation Strategies:
+                          Vibe Remediation Architectural Options:
                         </div>
 
                         <div className="flex flex-wrap gap-2">
-                          {finding.fix_options && finding.fix_options.length > 0 ? (
-                            finding.fix_options.map((opt, oIdx) => (
-                              <button
-                                key={oIdx}
-                                onClick={() => onApproveFix(finding.id, opt)}
-                                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 border border-cyan-400/40 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm shadow-cyan-500/10"
-                              >
-                                <Sparkles className="w-3 h-3 text-cyan-400" />
-                                <span>{opt}</span>
-                              </button>
-                            ))
-                          ) : (
+                          {(finding.vibe_remediation_options && finding.vibe_remediation_options.length > 0
+                            ? finding.vibe_remediation_options
+                            : finding.fix_options && finding.fix_options.length > 0
+                            ? finding.fix_options
+                            : ["Option 1: Parameterized Prepared Statement with strict bindings", "Option 2: Schema Validation via ORM filter allow-list"]
+                          ).map((opt, oIdx) => (
                             <button
-                              onClick={() => onApproveFix(finding.id, "Apply standard parameterized sanitization")}
-                              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 border border-cyan-400/40 transition-all flex items-center gap-1.5 cursor-pointer"
+                              key={oIdx}
+                              onClick={() => onApproveFix(finding.id, opt)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 border border-cyan-400/40 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm shadow-cyan-500/10 text-left"
                             >
-                              <Sparkles className="w-3 h-3 text-cyan-400" />
-                              <span>✨ Auto-Fix with Parameterized Query</span>
+                              <Sparkles className="w-3 h-3 text-cyan-400 shrink-0" />
+                              <span>{opt}</span>
                             </button>
-                          )}
+                          ))}
 
                           {/* Custom Vibe Prompt Button */}
                           <button

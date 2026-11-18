@@ -74,12 +74,23 @@ app.listen(8000, () => console.log('MERN Server running on port 8000'));`,
           severity: "MEDIUM",
           file_path: "backend/server.js",
           line_number: 10,
+          line_start: 10,
+          line_end: 10,
           snippet: 'app.use(cors({ origin: "*" }));',
           exploit_poc: "Conceptual Exploit: An untrusted domain makes cross-origin requests on behalf of users.",
+          exploit_demo: "fetch('http://localhost:8000/api', { headers: { Origin: 'http://malicious-site.com' } })",
+          whitebox_trace: {
+            source: "Origin header from untrusted cross-origin domain",
+            sanitizer: "None (wildcard origin trust)",
+            sink: "Access-Control-Allow-Origin: *"
+          },
           fix_options: [
-            "1. Specify an explicit allowed origin whitelist in CORS options",
-            "2. Integrate helmet() security middleware",
-            "3. Enforce strict Origin header checking"
+            "Option 1: Specify an explicit allowed origin whitelist in CORS options: origin: ['http://localhost:3000']",
+            "Option 2: Integrate helmet() security middleware to enforce strict HTTP security headers"
+          ],
+          vibe_remediation_options: [
+            "Option 1: Specify an explicit allowed origin whitelist in CORS options: origin: ['http://localhost:3000']",
+            "Option 2: Integrate helmet() security middleware to enforce strict HTTP security headers"
           ]
         },
         {
@@ -90,12 +101,23 @@ app.listen(8000, () => console.log('MERN Server running on port 8000'));`,
           severity: "HIGH",
           file_path: "backend/server.js",
           line_number: 16,
+          line_start: 16,
+          line_end: 16,
           snippet: "Object.assign(userProfile, req.body);",
           exploit_poc: "Conceptual Exploit: Attacker passes '__proto__.isAdmin = true' to elevate privileges across the app.",
+          exploit_demo: '{"__proto__": {"isAdmin": true}}',
+          whitebox_trace: {
+            source: "req.body containing polluted prototype keys",
+            sanitizer: "None (unrestricted object assignment)",
+            sink: "Object.assign(userProfile, req.body)"
+          },
           fix_options: [
-            "1. Filter and assign only whitelisted fields explicitly",
-            "2. Freeze Object.prototype during initialization",
-            "3. Use Object.create(null) for unprototyped dictionary objects"
+            "Option 1: Filter and assign only whitelisted fields explicitly using Zod schema parsing",
+            "Option 2: Freeze Object.prototype using Object.freeze(Object.prototype) during bootstrap"
+          ],
+          vibe_remediation_options: [
+            "Option 1: Filter and assign only whitelisted fields explicitly using Zod schema parsing",
+            "Option 2: Freeze Object.prototype using Object.freeze(Object.prototype) during bootstrap"
           ]
         }
       ]
@@ -150,12 +172,23 @@ module.exports = router;`,
           severity: "CRITICAL",
           file_path: "backend/routes/auth.js",
           line_number: 8,
+          line_start: 8,
+          line_end: 8,
           snippet: "const user = await User.find(req.body);",
           exploit_poc: 'Conceptual Exploit: Attacker passes {"password": {"$gt": ""}} to bypass authentication without valid credentials.',
+          exploit_demo: '{"username": "admin", "password": {"$gt": ""}}',
+          whitebox_trace: {
+            source: "req.body from unauthenticated POST /api/login",
+            sanitizer: "None (passed directly to query without schema check)",
+            sink: "Mongoose User.find(req.body)"
+          },
           fix_options: [
-            "1. Sanitize incoming request objects with mongo-sanitize",
-            "2. Build explicit query with typed parameters: { username: req.body.username }",
-            "3. Enforce Zod/Joi schema validation on request payload"
+            "Option 1: Sanitize incoming request objects with mongo-sanitize and bind explicit fields: { username: req.body.username }",
+            "Option 2: Enforce strict Zod schema validation on request payload before passing to database queries"
+          ],
+          vibe_remediation_options: [
+            "Option 1: Sanitize incoming request objects with mongo-sanitize and bind explicit fields: { username: req.body.username }",
+            "Option 2: Enforce strict Zod schema validation on request payload before passing to database queries"
           ]
         },
         {
@@ -166,12 +199,23 @@ module.exports = router;`,
           severity: "HIGH",
           file_path: "backend/routes/auth.js",
           line_number: 14,
+          line_start: 14,
+          line_end: 14,
           snippet: 'const token = jwt.sign({ id: user[0]._id }, "super_secret_jwt_key_12345");',
           exploit_poc: "Conceptual Exploit: Attacker extracts the hardcoded secret to sign forged admin tokens.",
+          exploit_demo: 'jwt.sign({ id: "admin_1" }, "super_secret_jwt_key_12345")',
+          whitebox_trace: {
+            source: "hardcoded string literal in auth.js line 14",
+            sanitizer: "None (plain text signing secret)",
+            sink: "jwt.sign() cryptographic token signer"
+          },
           fix_options: [
-            "1. Load JWT secret from process.env.JWT_SECRET",
-            "2. Store secrets in AWS Secrets Manager or HashiCorp Vault",
-            "3. Migrate to RS256 asymmetric keypairs"
+            "Option 1: Load JWT secret from process.env.JWT_SECRET with fallback guard",
+            "Option 2: Migrate to asymmetric RS256/ES256 keypairs with public key verification"
+          ],
+          vibe_remediation_options: [
+            "Option 1: Load JWT secret from process.env.JWT_SECRET with fallback guard",
+            "Option 2: Migrate to asymmetric RS256/ES256 keypairs with public key verification"
           ]
         }
       ]
@@ -212,12 +256,23 @@ export default function UserProfileCard({ userBio }) {
           severity: "HIGH",
           file_path: "frontend/components/Profile.jsx",
           line_number: 8,
+          line_start: 8,
+          line_end: 8,
           snippet: "<div dangerouslySetInnerHTML={{ __html: userBio }} />",
           exploit_poc: "Conceptual Exploit: Attacker enters `<img src=x onerror=alert(document.cookie)>` in user bio to hijack sessions.",
+          exploit_demo: "<img src=x onerror=alert(document.cookie)>",
+          whitebox_trace: {
+            source: "userBio component prop from untrusted API payload",
+            sanitizer: "None (bypassed React escaping)",
+            sink: "dangerouslySetInnerHTML={{ __html: userBio }}"
+          },
           fix_options: [
-            "1. Sanitize raw HTML with DOMPurify.sanitize(userBio)",
-            "2. Use default JSX data binding `{userBio}` which auto-escapes",
-            "3. Render markdown through a secure sanitizer plugin"
+            "Option 1: Sanitize raw HTML with DOMPurify.sanitize(userBio)",
+            "Option 2: Use default JSX data binding `{userBio}` which automatically escapes HTML"
+          ],
+          vibe_remediation_options: [
+            "Option 1: Sanitize raw HTML with DOMPurify.sanitize(userBio)",
+            "Option 2: Use default JSX data binding `{userBio}` which automatically escapes HTML"
           ]
         }
       ]

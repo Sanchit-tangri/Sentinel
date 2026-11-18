@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import List, Optional, Dict, Any
 from enum import Enum
 
@@ -10,6 +10,12 @@ class SeverityLevel(str, Enum):
     CRITICAL = "CRITICAL"
 
 
+class WhiteboxTrace(BaseModel):
+    source: str
+    sanitizer: str = "None (Missing / Ineffective)"
+    sink: str
+
+
 class VulnerabilityFinding(BaseModel):
     id: str
     cwe_id: Optional[str] = None
@@ -18,10 +24,39 @@ class VulnerabilityFinding(BaseModel):
     severity: SeverityLevel
     file_path: Optional[str] = None
     line_number: Optional[int] = None
+    line_start: Optional[int] = None
+    line_end: Optional[int] = None
     snippet: Optional[str] = None
     recommendation: Optional[str] = None
     exploit_poc: Optional[str] = None
+    exploit_demo: Optional[str] = None
+    whitebox_trace: Optional[Dict[str, str]] = None
     fix_options: List[str] = Field(default_factory=list)
+    vibe_remediation_options: List[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def sync_legacy_and_v1_fields(self) -> "VulnerabilityFinding":
+        # Synchronize line numbers
+        if self.line_number is not None and self.line_start is None:
+            self.line_start = self.line_number
+        elif self.line_start is not None and self.line_number is None:
+            self.line_number = self.line_start
+        if self.line_end is None:
+            self.line_end = self.line_start or self.line_number or 1
+
+        # Synchronize exploit demonstrations
+        if self.exploit_poc and not self.exploit_demo:
+            self.exploit_demo = self.exploit_poc
+        elif self.exploit_demo and not self.exploit_poc:
+            self.exploit_poc = self.exploit_demo
+
+        # Synchronize remediation options
+        if self.fix_options and not self.vibe_remediation_options:
+            self.vibe_remediation_options = list(self.fix_options)
+        elif self.vibe_remediation_options and not self.fix_options:
+            self.fix_options = list(self.vibe_remediation_options)
+
+        return self
 
 
 class ArchitectSpecification(BaseModel):

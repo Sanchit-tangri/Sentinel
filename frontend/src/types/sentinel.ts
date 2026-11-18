@@ -8,10 +8,19 @@ export interface Finding {
   severity: SeverityLevel;
   file_path?: string;
   line_number?: number;
+  line_start?: number;
+  line_end?: number;
   snippet?: string;
   recommendation?: string;
   exploit_poc?: string;
+  exploit_demo?: string;
+  whitebox_trace?: {
+    source: string;
+    sanitizer?: string;
+    sink: string;
+  };
   fix_options?: string[];
+  vibe_remediation_options?: string[];
 }
 
 export interface ProjectFile {

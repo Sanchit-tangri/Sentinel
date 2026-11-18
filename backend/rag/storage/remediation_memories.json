@@ -223,5 +223,41 @@
     "patched_diff": "--- original.py\n+++ patched.py\n@@ -1,3 +1,3 @@\n def get_account(user_id, db):\n-    query = f\"SELECT * FROM accounts WHERE id = {user_id}\"\n-    db.execute(query)\n+    query = \"SELECT * FROM accounts WHERE id = %s\"\n+    db.execute(query, (user_id,))\n",
     "explanation": "Fallback heuristic patch applied (Parametrized SQL query for CWE-89 (Guided by memory mem-02df7c53)). LLM patch rejected due to: Drift detected: Missing functions: get_account",
     "timestamp": "2026-11-18T11:33:46.184013"
+  },
+  {
+    "memory_id": "mem-18f63ef2",
+    "cwe_id": "CWE-89",
+    "vulnerability_title": "Critical SQL Injection via f-string interpolation",
+    "vulnerable_pattern": "query = f\"SELECT * FROM users WHERE id = {user_id}\"",
+    "patched_diff": "--- original.py\n+++ patched.py\n@@ -1,5 +1,8 @@\n def get_user_profile(user_id: int, db_connection):\n+    \"\"\"Securely fetches user profile with parameterized SQL query.\"\"\"\n+    if not isinstance(user_id, int):\n+        raise ValueError(\"Invalid user_id type\")\n     cursor = db_connection.cursor()\n-    query = f\"SELECT * FROM users WHERE id = {user_id}\"\n-    cursor.execute(query)\n-    return cursor.fetchone()\n+    query = \"SELECT id, username, email FROM users WHERE id = %s\"\n+    cursor.execute(query, (user_id,))\n+    return cursor.fetchone()",
+    "explanation": "[mistralai/codestral-2501] Synthesized clean defensive code satisfying Architect security boundaries.",
+    "timestamp": "2026-11-18T11:41:04.895799"
+  },
+  {
+    "memory_id": "mem-750e1d53",
+    "cwe_id": "CWE-89",
+    "vulnerability_title": "Critical SQL Injection via f-string interpolation",
+    "vulnerable_pattern": "query = f\"SELECT * FROM accounts WHERE id = {user_id}\"",
+    "patched_diff": "--- original.py\n+++ patched.py\n@@ -1,3 +1,3 @@\n def get_account(user_id, db):\n-    query = f\"SELECT * FROM accounts WHERE id = {user_id}\"\n-    db.execute(query)\n+    query = \"SELECT * FROM accounts WHERE id = %s\"\n+    db.execute(query, (user_id,))\n",
+    "explanation": "Fallback heuristic patch applied (Parametrized SQL query for CWE-89 (Guided by memory mem-02df7c53)). LLM patch rejected due to: Drift detected: Missing functions: get_account",
+    "timestamp": "2026-11-18T11:41:07.324278"
+  },
+  {
+    "memory_id": "mem-cfed3b1f",
+    "cwe_id": "CWE-89",
+    "vulnerability_title": "Critical SQL Injection via f-string interpolation",
+    "vulnerable_pattern": "query = f\"SELECT * FROM users WHERE id = {user_id}\"",
+    "patched_diff": "--- original.py\n+++ patched.py\n@@ -1,5 +1,8 @@\n def get_user_profile(user_id: int, db_connection):\n+    \"\"\"Securely fetches user profile with parameterized SQL query.\"\"\"\n+    if not isinstance(user_id, int):\n+        raise ValueError(\"Invalid user_id type\")\n     cursor = db_connection.cursor()\n-    query = f\"SELECT * FROM users WHERE id = {user_id}\"\n-    cursor.execute(query)\n-    return cursor.fetchone()\n+    query = \"SELECT id, username, email FROM users WHERE id = %s\"\n+    cursor.execute(query, (user_id,))\n+    return cursor.fetchone()",
+    "explanation": "[mistralai/codestral-2501] Synthesized clean defensive code satisfying Architect security boundaries.",
+    "timestamp": "2026-11-18T11:41:44.982928"
+  },
+  {
+    "memory_id": "mem-e1e2dc93",
+    "cwe_id": "CWE-89",
+    "vulnerability_title": "Critical SQL Injection via f-string interpolation",
+    "vulnerable_pattern": "query = f\"SELECT * FROM accounts WHERE id = {user_id}\"",
+    "patched_diff": "--- original.py\n+++ patched.py\n@@ -1,3 +1,3 @@\n def get_account(user_id, db):\n-    query = f\"SELECT * FROM accounts WHERE id = {user_id}\"\n-    db.execute(query)\n+    query = \"SELECT * FROM accounts WHERE id = %s\"\n+    db.execute(query, (user_id,))\n",
+    "explanation": "Fallback heuristic patch applied (Parametrized SQL query for CWE-89 (Guided by memory mem-02df7c53)). LLM patch rejected due to: Drift detected: Missing functions: get_account",
+    "timestamp": "2026-11-18T11:41:47.420960"
   }
 ]
