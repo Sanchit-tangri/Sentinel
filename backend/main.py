@@ -1,8 +1,12 @@
+import sys
 import os
 import io
 import asyncio
 from datetime import datetime
 from dotenv import load_dotenv
+
+# Ensure backend directory is in sys.path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Load environment variables from .env file
 load_dotenv()
@@ -310,3 +314,8 @@ def download_remediated_zip_endpoint(session_id: str):
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename=sentinel-remediated-{session_id}.zip"}
     )
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True, app_dir=os.path.dirname(os.path.abspath(__file__)))
