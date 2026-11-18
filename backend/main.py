@@ -11,8 +11,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Load environment variables from .env file
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect, Request
+from fastapi.responses import StreamingResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
@@ -93,7 +93,42 @@ class FullstackScaffoldPayload(BaseModel):
 
 
 @app.get("/")
-def read_root():
+def read_root(request: Request):
+    accept_header = request.headers.get("accept", "")
+    if "text/html" in accept_header and "application/json" not in accept_header:
+        return HTMLResponse(content="""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="refresh" content="1;url=http://localhost:3000">
+  <title>Sentinel v1.0 Studio Gateway</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>body { background-color: #07090E; color: #f1f5f9; font-family: sans-serif; }</style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-6">
+  <div class="max-w-md w-full p-8 rounded-2xl bg-slate-900/80 border border-white/[0.08] shadow-2xl space-y-6 text-center backdrop-blur-xl">
+    <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-slate-950 font-bold text-2xl mx-auto shadow-lg shadow-cyan-500/30">
+      ⚡
+    </div>
+    <div>
+      <h1 class="text-xl font-bold text-white tracking-tight">Sentinel v1.0 Polyglot Studio</h1>
+      <p class="text-xs text-slate-400 mt-1">Backend API is active on port 8000.</p>
+    </div>
+    <div class="p-3 rounded-xl bg-cyan-950/30 border border-cyan-500/20 text-xs text-cyan-300">
+      Redirecting to Studio UI at <strong class="text-white">http://localhost:3000</strong>...
+    </div>
+    <div class="space-y-2 pt-2">
+      <a href="http://localhost:3000" class="block w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-bold text-xs hover:brightness-110 transition-all shadow-lg shadow-cyan-500/20">
+        🚀 Open Studio UI (localhost:3000)
+      </a>
+      <a href="/docs" class="block w-full py-2 px-4 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-300 font-semibold text-xs transition-all">
+        🔌 View Interactive API Docs (/docs)
+      </a>
+    </div>
+  </div>
+</body>
+</html>""")
+
     return {
         "message": "Welcome to Sentinel v1.0 Polyglot Multi-Agent Security Studio",
         "version": "1.0.0",
